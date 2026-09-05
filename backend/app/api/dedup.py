@@ -20,12 +20,16 @@ from app.services.dedup.similarity import (
     is_same_event,
     pair_score,
 )
-from app.services.ingestion import DUPLICATE_WINDOW_DAYS, FUZZY_CANDIDATE_LIMIT
+from app.services.ingestion import DUPLICATE_WINDOW_DAYS
 from app.workers.jobs import job_runner
 
 router = APIRouter(tags=["dedup"])
 
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
+
+# Cap the story pool fed to pairwise comparison so the reviewer endpoint
+# stays responsive even when a large feed accumulates thousands of stories.
+_CANDIDATE_POOL = 80
 
 
 @router.post("/run", response_model=IngestionRunResponse, status_code=202)
@@ -51,6 +55,7 @@ async def dedup_candidates(
     min_score: float = Query(REVIEW_MIN, ge=0.0, le=1.0),
     limit: int = Query(50, ge=1, le=200),
 ) -> list[DedupCandidateRead]:
+    # Bounded pool so pairwise comparison stays interactive on large feeds.
     window_start = datetime.now(timezone.utc) - timedelta(days=DUPLICATE_WINDOW_DAYS)
     stories = (
         await session.execute(
@@ -61,7 +66,7 @@ async def dedup_candidates(
                 Story.url.is_not(None),
             )
             .order_by(Story.discovered_at.desc())
-            .limit(FUZZY_CANDIDATE_LIMIT)
+            .limit(_CANDIDATE_POOL)
         )
     ).scalars().all()
 

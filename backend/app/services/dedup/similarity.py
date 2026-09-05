@@ -52,7 +52,14 @@ def description_similarity(a: str | None, b: str | None) -> float | None:
     nb = normalize_title(b or "")
     if not na or not nb or min(len(na), len(nb)) < 20:
         return None
+    # Long summaries dominate SequenceMatcher cost (O(n*m)); cap at a fixed
+    # window so duplicate decisions stay fast even with thousands of pairs.
+    na = na[:_DESC_MAX_CHARS]
+    nb = nb[:_DESC_MAX_CHARS]
     return SequenceMatcher(None, na, nb).ratio()
+
+
+_DESC_MAX_CHARS = 140
 
 
 def token_containment(a: str, b: str) -> float:

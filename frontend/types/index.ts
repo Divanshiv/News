@@ -115,3 +115,44 @@ export type IngestionJob = {
   error: string | null;
   result: IngestionJobResult[] | null;
 };
+
+export type JobSummary = {
+  job_id: string;
+  job_name: string;
+  status: IngestionJobStatus;
+  created_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  error: string | null;
+};
+
+export type ServiceConfig = {
+  app_name: string;
+  app_version: string;
+  environment: string;
+  llm_provider: string;
+  ollama_url: string;
+  ollama_model: string;
+};
+
+export type Article = {
+  id: number;
+  story_id: number;
+  headline: string;
+  subheadline: string | null;
+  summary: string | null;
+  body: string | null;
+  seo_title: string | null;
+  seo_description: string | null;
+  status: string;
+  published_at: string | null;
+  updated_at: string;
+};
+
+export type DedupCandidate = {
+  story_id_a: number;
+  title_a: string;
+  story_id_b: number;
+  title_b: string;
+  score: number;
+};

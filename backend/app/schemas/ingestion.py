@@ -30,3 +30,13 @@ class IngestionJobRead(BaseModel):
     completed_at: datetime | None = None
     error: str | None = None
     result: list[dict] | None = None
+
+
+class JobSummaryRead(BaseModel):
+    job_id: str
+    job_name: str
+    status: JobStatus
+    created_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error: str | None = None

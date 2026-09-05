@@ -62,6 +62,10 @@ class JobRunner:
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
 
+    def recent(self, limit: int) -> list[Job]:
+        jobs = sorted(self._jobs.values(), key=lambda job: job.created_at, reverse=True)
+        return jobs[:limit]
+
     def start(self) -> None:
         self._ensure_workers()
 
