@@ -18,4 +18,6 @@ async def service_config() -> ServiceConfigRead:
         llm_provider=settings.llm_provider,
         ollama_url=settings.ollama_url,
         ollama_model=settings.ollama_model,
+        openai_model=settings.openai_model,
+        anthropic_model=settings.anthropic_model,
     )

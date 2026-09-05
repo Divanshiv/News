@@ -10,3 +10,5 @@ class ServiceConfigRead(BaseModel):
     llm_provider: str
     ollama_url: str
     ollama_model: str
+    openai_model: str | None = None
+    anthropic_model: str | None = None

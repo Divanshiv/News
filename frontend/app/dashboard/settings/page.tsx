@@ -126,8 +126,24 @@ export default function SettingsPage() {
                 </h3>
                 <div className="divide-y divide-border rounded-lg border px-4">
                   <Row label="Provider" value={state.data.llm_provider} mono />
-                  <Row label="Model" value={state.data.ollama_model} mono />
-                  <Row label="Base URL" value={state.data.ollama_url} mono />
+                  {state.data.llm_provider === "ollama" && (
+                    <>
+                      <Row label="Model" value={state.data.ollama_model} mono />
+                      <Row label="Base URL" value={state.data.ollama_url} mono />
+                    </>
+                  )}
+                  {state.data.llm_provider === "openai" && state.data.openai_model && (
+                    <>
+                      <Row label="Model" value={state.data.openai_model} mono />
+                      <Row label="API" value="OpenAI Chat Completions" />
+                    </>
+                  )}
+                  {state.data.llm_provider === "anthropic" && state.data.anthropic_model && (
+                    <>
+                      <Row label="Model" value={state.data.anthropic_model} mono />
+                      <Row label="API" value="Anthropic Messages" />
+                    </>
+                  )}
                 </div>
               </div>
             </div>

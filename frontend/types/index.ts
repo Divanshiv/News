@@ -133,6 +133,8 @@ export type ServiceConfig = {
   llm_provider: string;
   ollama_url: string;
   ollama_model: string;
+  openai_model?: string | null;
+  anthropic_model?: string | null;
 };
 
 export type Article = {

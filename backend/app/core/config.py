@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.2"
     ollama_timeout_seconds: float = 60.0
 
+    openai_api_key: str = ""
+    openai_model: str = "gpt-5-mini"
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_timeout_seconds: float = 60.0
+
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-20250514"
+    anthropic_base_url: str = "https://api.anthropic.com"
+    anthropic_max_tokens: int = 4096
+    anthropic_timeout_seconds: float = 60.0
+
 
 @lru_cache
 def get_settings() -> Settings:

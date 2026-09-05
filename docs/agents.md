@@ -12,29 +12,55 @@ concrete model or server.
 |-----------------|------------------------------------------------|
 | `base.py`       | `LLMProvider` ABC + `LLMResponse` + `LLMError` |
 | `ollama.py`     | `OllamaProvider` — local Ollama REST API        |
+| `openai.py`     | `OpenAIProvider` — OpenAI Chat Completions API |
+| `anthropic.py`  | `AnthropicProvider` — Anthropic Messages API   |
 | `__init__.py`   | `get_provider()` factory (env-driven)          |
 
 `LLMProvider.generate(prompt, *, system, format, temperature, max_tokens)`
 returns `LLMResponse(text, model, prompt_tokens, completion_tokens)`. Agents
 call `get_provider()` to obtain the configured backend; swapping providers is a
-config change, not a code change. `format` may be `"json"` or a JSON schema —
-Ollama enforces it server-side so agents never parse prose.
+config change, not a code change. `format` may be `"json"` or a JSON schema.
 
-Ollama details:
+Provider notes:
 
-- Endpoint: `POST {url}/api/generate` (stream off)
-- `options.temperature` and `options.num_predict` forwarded when provided
-- Usage counters: `prompt_eval_count` and `eval_count`
-- `404` (model not installed) and transport errors raise `LLMError`
+- **Ollama** enforces the schema server-side (`format`), so agents never parse
+  prose. Endpoint `POST {url}/api/generate`; usage from `prompt_eval_count` /
+  `eval_count`; `404` (model not installed) and transport errors raise
+  `LLMError`.
+- **OpenAI** maps `format` to `response_format={"type": "json_object"}`, and
+  works against any OpenAI-compatible endpoint via `OPENAI_BASE_URL` (Azure,
+  local proxies). Usage comes from `usage.prompt_tokens` /
+  `usage.completion_tokens`; `401`/`429` and transport errors raise `LLMError`.
+- **Anthropic** has no `response_format`; a JSON-schema `format` appends an
+  "output raw JSON only" instruction instead, and the scout's robust parser +
+  rules fallback absorbs any prose. `max_tokens` is required by the Messages
+  API and defaults to `ANTHROPIC_MAX_TOKENS`. Usage from
+  `usage.input_tokens` / `usage.output_tokens`; `401`/`429` and transport
+  errors raise `LLMError`.
 
 Configuration (`backend/.env`):
 
-| Variable                | Default                 | Purpose                 |
-|-------------------------|-------------------------|-------------------------|
-| `LLM_PROVIDER`          | `ollama`                | Provider selected by `get_provider()` |
-| `OLLAMA_URL`            | `http://localhost:11434`| Ollama server base URL  |
-| `OLLAMA_MODEL`          | `llama3.2`              | Model name              |
-| `OLLAMA_TIMEOUT_SECONDS`| `60`                    | Per-request timeout     |
+| Variable                 | Default                      | Purpose                 |
+|--------------------------|------------------------------|-------------------------|
+| `LLM_PROVIDER`           | `ollama`                     | Provider selected by `get_provider()` (ollama \| openai \| anthropic) |
+| `OLLAMA_URL`             | `http://localhost:11434`     | Ollama server base URL  |
+| `OLLAMA_MODEL`           | `llama3.2`                   | Model name              |
+| `OLLAMA_TIMEOUT_SECONDS` | `60`                         | Per-request timeout     |
+| `OPENAI_API_KEY`         | *(empty)*                    | Bearer token (required for openai) |
+| `OPENAI_MODEL`           | `gpt-5-mini`                 | Chat Completions model  |
+| `OPENAI_BASE_URL`        | `https://api.openai.com/v1`  | Any OpenAI-compatible endpoint |
+| `OPENAI_TIMEOUT_SECONDS` | `60`                         | Per-request timeout     |
+| `ANTHROPIC_API_KEY`      | *(empty)*                    | `x-api-key` header (required for anthropic) |
+| `ANTHROPIC_MODEL`        | `claude-sonnet-4-20250514`   | Messages API model      |
+| `ANTHROPIC_BASE_URL`     | `https://api.anthropic.com`  | Messages API base URL   |
+| `ANTHROPIC_MAX_TOKENS`   | `4096`                       | Required default cap    |
+| `ANTHROPIC_TIMEOUT_SECONDS` | `60`                       | Per-request timeout     |
+
+API keys are read from the environment only and never surface through the
+API or to the browser — `GET /api/v1/meta/config` exposes provider/model
+names but never credentials. All-provider failures fall back to the scout's
+deterministic rules, so the pipeline stays runnable when a provider is
+unavailable or unconfigured.
 
 ## Scout agent
 
