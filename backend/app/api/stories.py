@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db_session
 from app.models.source import Source
@@ -10,6 +11,16 @@ from app.schemas.story import StoryCreate, StoryRead, StoryUpdate
 from app.services.slugs import unique_slug
 
 router = APIRouter(tags=["stories"])
+
+_STORY_LOAD = selectinload(Story.sources).selectinload(StorySource.source)
+
+
+def _to_read(story: Story) -> StoryRead:
+    read = StoryRead.model_validate(story)
+    read.source_names = [
+        link.source.name for link in story.sources if link.source is not None
+    ]
+    return read
 
 
 @router.get("", response_model=ListResponse[StoryRead])
@@ -28,10 +39,15 @@ async def list_stories(
 
     total = await session.scalar(select(func.count()).select_from(Story).where(*filters))
     result = await session.execute(
-        select(Story).where(*filters).order_by(Story.discovered_at.desc()).limit(limit).offset(offset)
+        select(Story)
+        .options(_STORY_LOAD)
+        .where(*filters)
+        .order_by(Story.discovered_at.desc())
+        .limit(limit)
+        .offset(offset)
     )
     return ListResponse(
-        items=[StoryRead.model_validate(s) for s in result.scalars().all()],
+        items=[_to_read(s) for s in result.scalars().all()],
         total=total or 0,
         limit=limit,
         offset=offset,
@@ -58,8 +74,8 @@ async def create_story(
         )
 
     await session.commit()
-    await session.refresh(story)
-    return story
+    await session.refresh(story, attribute_names=["sources"])
+    return _to_read(story)
 
 
 @router.get("/{story_id}", response_model=StoryRead)
@@ -67,10 +83,10 @@ async def get_story(
     story_id: int,
     session: AsyncSession = Depends(get_db_session),
 ):
-    story = await session.get(Story, story_id)
+    story = await session.get(Story, story_id, options=[_STORY_LOAD])
     if story is None:
         raise HTTPException(status_code=404, detail="Story not found")
-    return story
+    return _to_read(story)
 
 
 @router.patch("/{story_id}", response_model=StoryRead)
@@ -88,8 +104,13 @@ async def update_story(
     for field, value in updates.items():
         setattr(story, field, value)
     await session.commit()
-    await session.refresh(story)
-    return story
+    refreshed = await session.execute(
+        select(Story)
+        .options(_STORY_LOAD)
+        .where(Story.id == story_id)
+        .execution_options(populate_existing=True)
+    )
+    return _to_read(refreshed.scalar_one())
 
 
 @router.delete("/{story_id}", status_code=204)

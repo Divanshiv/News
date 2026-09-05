@@ -22,6 +22,8 @@ class Source(Base):
     reliability_score: Mapped[float] = mapped_column(Float, default=0.0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     license_notes: Mapped[str | None] = mapped_column(Text)
+    last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_fetch_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

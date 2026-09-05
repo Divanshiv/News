@@ -34,3 +34,32 @@ export async function apiGet<T>(path: string): Promise<T> {
 
   return (await response.json()) as T;
 }
+
+export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      cache: "no-store",
+    });
+  } catch (error) {
+    throw new Error(
+      `Unable to reach the backend at ${API_BASE}${path}. Is it running?`,
+      { cause: error },
+    );
+  }
+
+  if (!response.ok) {
+    throw new ApiError(
+      `Backend request failed: ${response.status} ${response.statusText}`,
+      response.status,
+    );
+  }
+
+  return (await response.json()) as T;
+}

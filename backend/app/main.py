@@ -1,17 +1,37 @@
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.articles import router as articles_router
 from app.api.health import router as health_router
+from app.api.ingestion import router as ingestion_router
 from app.api.sources import router as sources_router
 from app.api.stories import router as stories_router
 from app.core.config import get_settings
+from app.core.logging import setup_logging
+from app.workers import ingestion as _ingestion  # noqa: F401  registers job handlers on the shared runner
+from app.workers.jobs import job_runner
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_logging()
+    job_runner.start()
+    logger.info("application starting", extra={"environment": settings.environment})
+    yield
+    job_runner.shutdown()
+
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -26,6 +46,7 @@ app.include_router(health_router, prefix=settings.api_v1_prefix)
 app.include_router(sources_router, prefix=f"{settings.api_v1_prefix}/sources")
 app.include_router(stories_router, prefix=f"{settings.api_v1_prefix}/stories")
 app.include_router(articles_router, prefix=f"{settings.api_v1_prefix}/articles")
+app.include_router(ingestion_router, prefix=f"{settings.api_v1_prefix}/ingestion")
 
 
 @app.get("/")

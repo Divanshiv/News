@@ -1,6 +1,6 @@
 # Architecture
 
-## Phase 1 — Foundation (current)
+## Phase 3 — RSS ingestion (current)
 
 The repository is a monorepo with three top-level components:
 
@@ -24,18 +24,19 @@ Browser
                  └── PostgreSQL :5432 (asyncpg)
 ```
 
-### Backend layer map (Phase 1 scope)
+### Backend layer map
 
-| Layer      | Path            | Responsibility                          |
-|------------|-----------------|-----------------------------------------|
-| API        | `app/api/`      | HTTP routers (health)                   |
-| Core       | `app/core/`     | Settings, DB engine/session, logging    |
-| Models     | `app/models/`   | SQLAlchemy ORM models (Phase 2)         |
-| Schemas    | `app/schemas/`  | Pydantic request/response models (P2)   |
-| Services   | `app/services/` | Domain services (ingestion etc., P2+)   |
-| Agents     | `app/agents/`   | Scout/Research/Verification/Writer (P5+)|
-| Tools      | `app/tools/`    | WebSearch/URLFetch/RSSFetch (P6+)       |
-| Workers    | `app/workers/`  | Background job runners (P3+)            |
+| Layer      | Path                  | Responsibility                          |
+|------------|-----------------------|-----------------------------------------|
+| API        | `app/api/`            | HTTP routers: health, sources, stories, articles, ingestion |
+| Core       | `app/core/`           | Settings, DB engine/session, structured JSON logging |
+| Models     | `app/models/`         | SQLAlchemy ORM models (14 tables)      |
+| Schemas    | `app/schemas/`        | Pydantic request/response models       |
+| Services   | `app/services/rss/`   | Feed fetch (httpx), parse (feedparser), normalize (canonical URLs) |
+| Services   | `app/services/ingestion.py` | Ingestion pipeline, dedup, Story/Source linking |
+| Workers    | `app/workers/`        | In-process async job runner + ingestion job handlers |
+| Agents     | `app/agents/`         | Scout/Research/Verification/Writer (P5+)|
+| Tools      | `app/tools/`          | WebSearch/URLFetch/RSSFetch (P6+)      |
 
 ### Frontend layer map
 
@@ -43,9 +44,20 @@ Browser
 |-------------------------|--------------------------------------|
 | `app/`                  | App Router pages (public + dashboard)|
 | `components/`           | React components (`ui/` = shadcn)    |
-| `lib/api.ts`            | Typed backend API client             |
-| `hooks/`                | Client-side hooks (Phase 2+)         |
+| `lib/api.ts`            | Typed backend API client (apiGet/apiPost) |
 | `types/`                | Shared TypeScript types              |
+
+### Job execution model
+
+Background work runs on a small in-process async job runner
+(`app/workers/jobs.py`). Jobs are submitted over the API (202 Accepted with a
+job id), processed by worker coroutines on the same event loop, and polled via
+`GET /api/v1/ingestion/jobs/{id}`. This is intentionally minimal for
+single-process local/dev deployments; for multi-worker production, swap the
+runner for Redis + ARQ while keeping the `submit`/`get` interface stable.
+
+Job handlers are registered on the shared `job_runner` at import time so the
+runner works under any server (uvicorn lifespan, test transports, …).
 
 ### Configuration & secrets
 
@@ -62,7 +74,11 @@ uvicorn app.main:app --reload  (backend, :8000)
 postgres (local Homebrew :5432 or `docker compose up db`)
 ```
 
-### Planned evolution
+### Phased status
 
-See `docs/roadmap.md` for the phased plan (RSS ingestion, deduplication,
-scout/research/verification agents, articles, Instagram, RAG).
+| Phase | Status |
+|-------|--------|
+| 1 Foundation  | ✅ done |
+| 2 Database    | ✅ done |
+| 3 RSS ingestion | ✅ done — see `docs/ingestion.md` |
+| 4+            | planned — see `docs/roadmap.md` |

@@ -35,5 +35,7 @@ class SourceRead(SourceBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    last_fetched_at: datetime | None
+    last_fetch_error: str | None
     created_at: datetime
     updated_at: datetime
