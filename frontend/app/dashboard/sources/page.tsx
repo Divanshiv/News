@@ -29,6 +29,7 @@ import type {
   ListResponse,
   IngestionRunResponse,
   IngestionJob,
+  IngestionJobResult,
   SourceIngestResult,
 } from "@/types";
 
@@ -66,10 +67,17 @@ type SourceIngestMap = Record<
   { kind: "polling"; jobId: string } | { kind: "error"; message: string }
 >;
 
-function summarize(results: SourceIngestResult[]): string {
-  const fetched = results.reduce((sum, r) => sum + r.fetched, 0);
-  const created = results.reduce((sum, r) => sum + r.created, 0);
-  const skipped = results.reduce((sum, r) => sum + r.skipped, 0);
+function isSourceIngestResult(
+  result: IngestionJobResult,
+): result is SourceIngestResult {
+  return "fetched" in result;
+}
+
+function summarize(results: IngestionJobResult[]): string {
+  const ingest = results.filter(isSourceIngestResult);
+  const fetched = ingest.reduce((sum, r) => sum + r.fetched, 0);
+  const created = ingest.reduce((sum, r) => sum + r.created, 0);
+  const skipped = ingest.reduce((sum, r) => sum + r.skipped, 0);
   return `${fetched} fetched \u00b7 ${created} new \u00b7 ${skipped} duplicates`;
 }
 

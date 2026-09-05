@@ -79,6 +79,32 @@ export type SourceIngestResult = {
   error: string | null;
 };
 
+export type DedupRunResult = {
+  keep_id: number;
+  absorbed_ids: number[];
+  moved_links: number;
+};
+
+export type ScoutRunResult =
+  | {
+      story_id: number;
+      title: string;
+      error: string;
+    }
+  | {
+      story_id: number;
+      title: string;
+      should_research: boolean;
+      importance: number;
+      category: string | null;
+      reason: string;
+    };
+
+export type IngestionJobResult =
+  | SourceIngestResult
+  | DedupRunResult
+  | ScoutRunResult;
+
 export type IngestionJob = {
   job_id: string;
   job_name: string;
@@ -87,5 +113,5 @@ export type IngestionJob = {
   started_at: string | null;
   completed_at: string | null;
   error: string | null;
-  result: SourceIngestResult[] | null;
+  result: IngestionJobResult[] | null;
 };

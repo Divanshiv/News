@@ -11,6 +11,24 @@ export class ApiError extends Error {
   }
 }
 
+async function errorMessage(response: Response): Promise<string> {
+  const fallback = `Backend request failed: ${response.status} ${response.statusText}`;
+  try {
+    const body = (await response.json()) as unknown;
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      "detail" in body &&
+      typeof (body as { detail: unknown }).detail === "string"
+    ) {
+      return (body as { detail: string }).detail;
+    }
+  } catch {
+    // Response body is not JSON — fall back to the status line.
+  }
+  return fallback;
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   let response: Response;
   try {
@@ -26,10 +44,7 @@ export async function apiGet<T>(path: string): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new ApiError(
-      `Backend request failed: ${response.status} ${response.statusText}`,
-      response.status,
-    );
+    throw new ApiError(await errorMessage(response), response.status);
   }
 
   return (await response.json()) as T;
@@ -55,10 +70,7 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new ApiError(
-      `Backend request failed: ${response.status} ${response.statusText}`,
-      response.status,
-    );
+    throw new ApiError(await errorMessage(response), response.status);
   }
 
   return (await response.json()) as T;
