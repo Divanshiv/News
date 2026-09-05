@@ -9,15 +9,17 @@ PUBLIC SOURCES → INGESTION → DEDUPLICATION → SCOUT → RESEARCH → CLAIMS
 
 ## Status
 
-**Phase 5 — Scout agent (current).** Incoming stories are graded by a scout
-agent exposed over a replaceable LLM provider layer (Ollama first, with a
-deterministic rules fallback so the app runs anywhere): each story receives a
-category, an importance score, a research recommendation, and a reason, via a
-background `run_scout` job. 109 passing backend tests. Full core schema
-(14 tables), Alembic migrations, CRUD API for sources/stories/articles, seed
-data.
+**Phase 6 — Research (current).** Stories produce research packages: a
+replaceable tool layer (web search with a comma-separated fallback chain —
+DuckDuckGo and Bing keyless by default, optional Serper; URL fetch; stdlib
+text extraction; source lookup) feeds a ResearchAgent that defines gatherable
+sources and drafts initial claims via the LLM provider layer (Ollama first,
+deterministic fallback). Results persist as sources, story links, claims, and
+evidence through a background `research_story` job — 170 passing backend
+tests. Full core schema (14 tables), Alembic migrations, CRUD API for
+sources/stories/articles, seed data.
 
-Planned pipeline: research/verification agents → article writing →
+Planned pipeline: verification agent → article writing →
 Instagram content → human approval → publish. See `docs/roadmap.md`.
 
 ## Stack
@@ -100,10 +102,11 @@ docker compose up db
 - RSS ingestion: `POST /api/v1/ingestion/run`, `POST /api/v1/ingestion/sources/{id}/fetch`, `GET /api/v1/ingestion/jobs/{id}` (async jobs, poll for completion) — see `docs/ingestion.md`
 - Deduplication: `POST /api/v1/dedup/run` (maintenance merge job), `POST /api/v1/dedup/merge` (manual merge), `GET /api/v1/dedup/candidates` (near-miss review) — see `docs/dedup.md`
 - Scout agent: `POST /api/v1/scout/run` (batch scoring job) and `POST /api/v1/scout/stories/{id}` (single story) grade each story with category, importance (`0-10`), `should_research`, and a reason — Ollama-backed with a rules fallback — see `docs/agents.md`
-- Postgres schema: 13 models / 14 tables (sources, stories, claims, evidence, research runs, articles, social posts, media assets, agent runs, publishing jobs, users, audit log) via Alembic migration `d0e1f2a3b4c5` (scout fields; prev `c9d8e7f0a1b2` story merge fields)
+- Research: `POST /api/v1/research/run` (batch job) and `POST /api/v1/research/stories/{id}` research recommended stories — web search (`WEB_SEARCH_BACKEND`: DuckDuckGo/Bing keyless, Serper optional, comma-separated fallback chain), URL fetch, text extraction (`app/tools/`), ResearchAgent, initial claims; `GET /api/v1/research/runs/{story_id}` returns the package (runs, sources, claims with evidence) — see `docs/agents.md`
+- Postgres schema: 13 models / 14 tables (sources, stories, claims, evidence, research runs, articles, social posts, media assets, agent runs, publishing jobs, users, audit log) via Alembic migration `e5f6a7b8c9d0` (research fields; prev `d0e1f2a3b4c5` scout fields)
 - Seed script: admin operator + 10 RSS sources (`python -m scripts.seed`)
-- Backend test suite (`uv run pytest`, 109 tests)
-- Next.js frontend: public landing pages + admin dashboard (sidebar, dark mode, health card, sources/stories tables with live ingestion controls + Run dedup + Run scout)
+- Backend test suite (`uv run pytest`, 159 tests)
+- Next.js frontend: public landing pages + admin dashboard (sidebar, dark mode, health card, sources/stories tables with live ingestion controls + Run dedup + Run scout + Run research, research queue with clickable per-story research packages)
 
 ## Tests
 
@@ -136,7 +139,7 @@ All configuration via environment variables — see `.env.example` and `backend/
 - `docs/architecture.md` — system architecture and layer map
 - `docs/ingestion.md` — RSS pipeline, job runner, ingestion API
 - `docs/dedup.md` — similarity rules, merging, dedup APIs
-- `docs/agents.md` — LLM provider layer and agent design (scout agent)
+- `docs/agents.md` — LLM provider layer, research tool layer, and agent design (scout + research agents)
 - `docs/database.md` — schema, migrations, seed, testing
 - `docs/roadmap.md` — phased development plan (12 phases)
 

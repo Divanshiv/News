@@ -10,9 +10,9 @@ tests green, and the app runnable locally.
 | 3 RSS | Source registry, feed fetcher/parser/normalizer, ingestion job | New RSS items appear in dashboard | ✅ `docs/ingestion.md` |
 | 4 Deduplication | Title/description similarity, story merging, cross-source dedup | One event = one story with multiple sources | ✅ `docs/dedup.md` |
 | 5 Scout agent | LLM provider interface, Ollama provider, structured scoring | Stories get category/importance/should_research | ✅ `docs/agents.md` |
-| 6 Research | Web search + URL fetch tools, ResearchAgent, source collection | Story produces a research package | |
-| 7 Verification | Claim + Evidence models, ClaimExtractor, VerificationAgent | Claims show status/confidence/evidence/contradictions | |
-| 8 Writing | WriterAgent, article generation, article edit UI | Verified research produces editable draft | |
+| 6 Research | Web search + URL fetch tools, ResearchAgent, source collection | Story produces a research package | ✅ `docs/agents.md` |
+| 7 Verification | Claim + Evidence models, ClaimExtractor, VerificationAgent | Claims show status/confidence/evidence/contradictions | ✅ `docs/agents.md` |
+| 8 Writing | WriterAgent, article generation, article edit UI | Verified research produces editable draft | ✅ `docs/agents.md` |
 | 9 Website | Home/category/article/search pages, SEO, sitemap, RSS | Approved article becomes public | |
 | 10 Instagram | Caption + carousel generators, graphic templates, manual export first | Approved article → Instagram-ready content | |
 | 11 Approval + publishing | Review/Approve/Reject/Publish, publishing jobs | Full workflow from one dashboard | |

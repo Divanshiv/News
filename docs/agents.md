@@ -89,15 +89,186 @@ by construction. The agent:
    8, breaches → 9, etc.; `should_research = importance >= 6`; category from
    keyword votes or the source hint).
 
-## Execution
+## Research agent
 
-`workers/scout.py` registers the `run_scout` job. It scores the oldest
-unscouted `DISCOVERED` stories (batch 50, one per run) or a single story via
-`{"story_id": id}`. Results are written in place on the story — `category`,
-`importance_score`, `should_research`, `scout_reason`, `scouted_at` — and
-returned as a per-story report. Already-scouted stories are skipped
-(`should_research IS NULL` is the pending filter), and a failing story is
-isolated so the run continues.
+`app/agents/research.py` — the second production agent (Phase 6). It gathers
+background on a story and emits a `ResearchPackage`:
+
+```json
+{
+  "sources": [
+    {
+      "url": "https://example.com/announcement",
+      "title": "Example News Headline",
+      "snippet": "The full snippet text about the event.",
+      "tier": "primary",
+      "relevance": 0.9,
+      "fetched": true
+    }
+  ],
+  "claims": [
+    {
+      "claim_text": "Example Corp announced a new product line.",
+      "status": "unverified",
+      "confidence": 0.7,
+      "evidence_urls": ["https://example.com/announcement"]
+    }
+  ]
+}
+```
+
+### Tool abstraction (`app/tools/`, spec §23)
+
+Agents never touch the network directly — they depend on tool interfaces so
+providers stay replaceable and tests stay pure:
+
+| Tool                  | Default implementation                    | Notes                                      |
+|-----------------------|--------------------------------------------|--------------------------------------------|
+| `WebSearchTool`       | `DuckDuckGoWebSearch` (keyless)           | `BingWebSearch` (keyless); `SerperWebSearch` (`SERPER_API_KEY`); comma-separated `WEB_SEARCH_BACKEND` chains them as a `FallbackWebSearch` |
+| `URLFetchTool`        | httpx GET with retries + `max_bytes` cap  | JSON inline results are skipped            |
+| `TextExtractionTool`  | stdlib `HTMLParser` → title + text        | No new dependencies; markdown/scripts stripped |
+| `SourceLookupTool`    | DB get-or-create by normalized URL        | Tiers: primary/gov/edu/github/arxiv, social, news |
+
+`build_research_tools()` builds the full set from app config; workers inject
+fakes for tests. `normalize_research_url` strips tracking params
+(`utm_*`, `ref`, `fbclid`, `gclid`) so the same source deduplicates.
+
+### Research flow
+
+1. `build_queries` derives 2 rule-based queries from the story title
+   (boosted by "official announcement" / "press release" / "statement").
+2. Each query runs through `WebSearchTool`; results are deduplicated by
+   normalized URL (max `max_sources`).
+3. If combined results are thinner than `max_sources`, up to 2 extra
+   site-restricted fallback queries run against OSINT-flavored authoritative
+   domains per category (`osint_fallback_queries` — e.g. `nasa.gov` /
+   `isro.gov.in` for Space, `pib.gov.in` / `thehindu.com` for India).
+4. Up to `fetch_limit` top results are fetched and stripped to plain text by
+   `TextExtractionTool` (capped at `research_text_max_chars`).
+5. The provider extracts claims as JSON against a strict `_CLAIMS_JSON_SCHEMA`
+   (`claims[] {claim_text, status, confidence, evidence_urls}`); robust JSON
+   parsing + retry once, then a sentence-heuristic fallback keeps the pipeline
+   runnable when no LLM is configured.
+
+Config (`backend/.env`): `WEB_SEARCH_BACKEND` (`duckduckgo` | `bing` |
+`serper`, or comma-separated fallback chain like `duckduckgo,bing` — tried in
+order until one returns results), `SERPER_API_KEY`,
+`RESEARCH_MAX_SOURCES=6`, `RESEARCH_MAX_QUERIES=2`, `RESEARCH_FETCH_LIMIT=4`,
+`RESEARCH_TEXT_MAX_CHARS=6000`.
+
+### Execution and persistence
+
+`workers/research.py` registers the `research_story` job. It researches the
+oldest unresearched `DISCOVERED` stories flagged `should_research = true`
+(batch 20) or a single story via `{"story_id": id}`. Already-researched
+stories are skipped. `app/services/research.py::persist_package` writes the
+package: sources (get-or-create with tier-boosted reliability), `story_sources`
+links (`relationship_note="research ({tier})"`), initial claims + evidence, and
+marks the run `COMPLETED` and the story `RESEARCHING` (`researched_at` set).
+
+## Verification agent
+
+`app/agents/verification.py` — the third production agent (Phase 7). It verifies
+claims against collected evidence and emits a `VerificationResult`:
+
+```json
+{
+  "claims": [
+    {
+      "claim_id": 1,
+      "claim_text": "Company X announced a new product.",
+      "status": "CONFIRMED",
+      "confidence": 0.9,
+      "reasoning": "Supported by official announcement.",
+      "supporting_sources": ["https://example.com"],
+      "contradicting_sources": []
+    }
+  ],
+  "overall_confidence": 0.9,
+  "summary": "Claim verified."
+}
+```
+
+The agent:
+
+1. Takes a list of claims with their evidence URLs and text snippets.
+2. Builds a verification prompt with claim text and evidence.
+3. Calls the provider with a strict JSON schema for structured output.
+4. Parses the response robustly (fenced JSON, prose wrapping).
+5. Retries once on provider or parse failure.
+6. Falls back to heuristic verification when no LLM is available.
+
+Heuristic rules:
+
+- Count contradiction indicators (denied, false, refuted, etc.).
+- Count confirmation indicators (confirmed, verified, announced, etc.).
+- Multiple contradictions → CONTRADICTED (0.3 confidence).
+- Multiple confirmations + 2+ sources → CONFIRMED (0.7 confidence).
+- Some evidence → LIKELY (0.5 confidence).
+- No evidence → UNCONFIRMED (0.3 confidence).
+
+### Verification flow
+
+1. `workers/verification.py` registers the `verify_story` job.
+2. For each story in RESEARCHING status, it gathers claims with evidence.
+3. The `VerificationAgent` processes all claims in one pass.
+4. Claim statuses and confidence scores are updated in the database.
+5. Story status moves to VERIFICATION with overall confidence.
+
+### Claim statuses
+
+| Status        | Meaning                                      |
+|---------------|----------------------------------------------|
+| CONFIRMED     | Strong evidence from multiple sources        |
+| LIKELY        | Some supporting evidence                     |
+| UNCONFIRMED   | Insufficient evidence to verify              |
+| CONTRADICTED  | Evidence opposes the claim                   |
+
+## Writer agent
+
+`app/agents/writer.py` — the fourth production agent (Phase 8). It drafts a
+news article from a story's verified research package and emits an
+`ArticleDraft`:
+
+```json
+{
+  "headline": "Company X Announces Product Y",
+  "subheadline": "New launch set for December",
+  "summary": "Company X unveiled Product Y today.",
+  "body": "## What Happened\n\n...\n\n## Key Details\n\n- Product Y launches December 1.\n\n## How We Know\n\n...\n\n## Sources\n\n- https://example.com/press"
+}
+```
+
+The agent:
+
+1. Takes the story title/summary/category plus verified claims (status +
+   confidence) and the source URLs backing them.
+2. Builds a writing prompt with the claims and sources.
+3. Calls the provider with a strict JSON schema (`headline`, `subheadline`,
+   `summary`, `what_happened`, `key_details`, `why_it_matters`,
+   `what_happens_next`, `how_we_know`, `sources`, `seo_title`,
+   `seo_description`) at a moderate temperature (0.4).
+4. Parses the response robustly and assembles the article body as a
+   markdown-style document with `## What Happened` / `## Key Details` /
+   `## Why It Matters` / `## What Happens Next` / `## How We Know` /
+   `## Sources` sections.
+5. Retries once on provider or parse failure.
+6. Falls back to a deterministic template (headline from title, body from
+   confirmed claims, sources appended) when no LLM is available.
+
+### Writing flow
+
+1. `workers/article.py` registers the `generate_article` job.
+2. For each story in VERIFICATION status (batch 10) or via
+   `{"story_id": id}`, it gathers verified claims + evidence URLs and backing
+   source URLs.
+3. The `WriterAgent` produces the draft.
+4. An `Article` row is created in DRAFT status and the story moves to DRAFT.
+5. Stories without claims or with an existing article are skipped; merged or
+   missing stories are reported as errors.
+
+The writer never invents facts: it only composes from the claims/evidence it
+is given. SEO title/description default to truncated headline/summary.
 
 ## API
 
@@ -105,6 +276,19 @@ isolated so the run continues.
 |--------|-----------------------------|---------------------------------|
 | POST   | `/api/v1/scout/run`         | 202 → `run_scout` job, batch    |
 | POST   | `/api/v1/scout/stories/{id}`| 202 → `run_scout` job, single   |
+| POST   | `/api/v1/research/run`      | 202 → `research_story` job, batch |
+| POST   | `/api/v1/research/stories/{id}` | 202 → `research_story` job, single |
+| GET    | `/api/v1/research/runs/{story_id}` | 200 → `StoryResearchRead` (runs, sources, claims with evidence) |
+| POST   | `/api/v1/verification/run`  | 202 → `verify_story` job, batch |
+| POST   | `/api/v1/verification/stories/{id}` | 202 → `verify_story` job, single |
+| GET    | `/api/v1/verification/stories/{story_id}` | 200 → `StoryVerificationRead` (claims with evidence) |
+| PATCH  | `/api/v1/verification/claims/{claim_id}` | 200 → Update claim status/confidence |
+| POST   | `/api/v1/articles/generate` | 202 → `generate_article` job, batch |
+| POST   | `/api/v1/articles/generate/stories/{id}` | 202 → `generate_article` job, single |
+| GET    | `/api/v1/articles`          | 200 → list paginated articles (status filter) |
+| GET    | `/api/v1/articles/{id}`     | 200 → single article |
+| GET    | `/api/v1/articles/by-story/{story_id}` | 200 → article for a story (or null) |
+| PATCH  | `/api/v1/articles/{id}`     | 200 → update headline/body/SEO/status |
 
 Jobs run on the shared in-process runner and are polled via
 `GET /api/v1/ingestion/jobs/{id}` (§24).
@@ -114,4 +298,12 @@ Jobs run on the shared in-process runner and are polled via
 Providers are tested with `httpx.MockTransport`; agents with a fake provider
 that replays canned responses/exceptions. The `run_scout` job is faked in
 `tests/conftest.py` for API tests; worker tests run the real handler against
-the test database with a fake provider.
+the test database with a fake provider. Research tools are tested against
+fixture HTML (DuckDuckGo result markup, messy article HTML); the
+`research_story` job is faked in API tests the same way as scout.
+Verification agent tests (`test_verification_agent.py`) cover LLM parsing,
+fenced JSON stripping, retry logic, heuristic fallback, and edge cases.
+Writer agent tests (`test_writer_agent.py`) cover JSON parsing, fenced
+stripping, retry, template fallback (including empty claims), and prompt
+assembly; `test_article_worker.py` covers draft persistence, skip rules,
+batch targeting, and error paths.
