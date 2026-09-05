@@ -56,7 +56,7 @@ class Story(Base):
     )
     merged_stories: Mapped[list["Story"]] = relationship(
         back_populates="merged_into",
-        cascade="all, delete-orphan",
+        cascade="save-update, merge",
         foreign_keys="Story.merged_into_id",
     )
 

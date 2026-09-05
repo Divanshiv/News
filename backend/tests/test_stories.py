@@ -1,5 +1,9 @@
+from sqlalchemy import func, select
+
 from app.core.database import async_session_factory
-from app.models.story import StorySource
+from app.models.article import Article
+from app.models.claim import Claim, Evidence
+from app.models.story import Story, StorySource
 
 
 async def test_create_story_generates_slug(client):
@@ -81,3 +85,41 @@ async def test_delete_story(client):
     response = await client.delete(f"/api/v1/stories/{created['id']}")
     assert response.status_code == 204
     assert (await client.get(f"/api/v1/stories/{created['id']}")).status_code == 404
+
+
+async def test_delete_story_cascades_dependents_and_spares_merged_child(client):
+    keep = (
+        await client.post("/api/v1/stories", json={"title": "Merge target", "status": "RESEARCHING"})
+    ).json()
+    absorbed = (
+        await client.post("/api/v1/stories", json={"title": "Absorbed duplicate"})
+    ).json()
+
+    async with async_session_factory() as session:
+        keep_row = await session.get(Story, keep["id"])
+        absorbed_row = await session.get(Story, absorbed["id"])
+        absorbed_row.merged_into = keep_row
+        absorbed_row.status = "MERGED"
+        claim = Claim(story_id=keep_row.id, claim_text="A claim")
+        session.add(claim)
+        await session.flush()
+        evidence = Evidence(claim_id=claim.id, evidence_text="Evidence line")
+        session.add(evidence)
+        session.add(Article(story_id=keep_row.id, headline="Draft headline"))
+        await session.commit()
+        claim_id, evidence_id = claim.id, evidence.id
+
+    response = await client.delete(f"/api/v1/stories/{keep['id']}")
+    assert response.status_code == 204
+
+    async with async_session_factory() as session:
+        assert await session.get(Story, keep["id"]) is None
+        assert await session.get(Claim, claim_id) is None
+        assert await session.get(Evidence, evidence_id) is None
+        article_count = await session.scalar(
+            select(func.count()).select_from(Article).where(Article.story_id == keep["id"])
+        )
+        assert article_count == 0
+        survivor = await session.get(Story, absorbed["id"])
+        assert survivor is not None
+        assert survivor.merged_into_id is None

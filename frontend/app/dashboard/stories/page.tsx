@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, GitMerge, Newspaper, Radar, RefreshCw, Rocket } from "lucide-react";
+import { AlertTriangle, GitMerge, Newspaper, Radar, RefreshCw, Rocket, Telescope, Trash2 } from "lucide-react";
 
 import {
   StatusBadge,
@@ -25,13 +25,14 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPost } from "@/lib/api";
 import type {
   Story,
   ListResponse,
   IngestionRunResponse,
   IngestionJob,
 } from "@/types";
+import Link from "next/link";
 
 const POLL_INTERVAL = 1200;
 const POLL_TIMEOUT = 60000;
@@ -65,12 +66,21 @@ type ScoutState =
   | { kind: "done"; scored: number }
   | { kind: "error"; message: string };
 
+type ResearchState =
+  | { kind: "idle" }
+  | { kind: "polling"; jobId: string }
+  | { kind: "done"; researched: number }
+  | { kind: "error"; message: string };
+
 export default function StoriesPage() {
   const [state, setState] = React.useState<StoriesState>({ kind: "loading" });
   const [ingest, setIngest] = React.useState<IngestState>({ kind: "idle" });
   const [dedup, setDedup] = React.useState<DedupState>({ kind: "idle" });
   const [scout, setScout] = React.useState<ScoutState>({ kind: "idle" });
+  const [research, setResearch] = React.useState<ResearchState>({ kind: "idle" });
   const [refreshIndex, setRefreshIndex] = React.useState(0);
+  const [deleteConfirmId, setDeleteConfirmId] = React.useState<number | null>(null);
+  const [deleteErrorId, setDeleteErrorId] = React.useState<number | null>(null);
 
   const fetchStories = React.useCallback(() => {
     let cancelled = false;
@@ -97,6 +107,21 @@ export default function StoriesPage() {
     setState({ kind: "loading" });
     fetchStories();
   }, [fetchStories]);
+
+  const handleDeleteStory = React.useCallback(
+    async (storyId: number) => {
+      setDeleteErrorId(null);
+      try {
+        await apiDelete(`/api/v1/stories/${storyId}`);
+        setDeleteConfirmId(null);
+        refresh();
+      } catch (error: unknown) {
+        setDeleteConfirmId(null);
+        setDeleteErrorId(storyId);
+      }
+    },
+    [refresh],
+  );
 
   React.useEffect(() => {
     return fetchStories();
@@ -232,6 +257,65 @@ export default function StoriesPage() {
       });
   }, []);
 
+  const handleRunResearch = React.useCallback(() => {
+    setResearch({ kind: "idle" });
+    apiPost<IngestionRunResponse>("/api/v1/research/run")
+      .then((res) => {
+        setResearch({ kind: "polling", jobId: res.job_id });
+      })
+      .catch((error: unknown) => {
+        setResearch({
+          kind: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to run research.",
+        });
+      });
+  }, []);
+
+  React.useEffect(() => {
+    if (research.kind !== "polling") return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      apiGet<IngestionJob>(`/api/v1/ingestion/jobs/${research.jobId}`)
+        .then((job) => {
+          if (cancelled) return;
+          if (job.status === "COMPLETED" || job.status === "FAILED") {
+            const result = Array.isArray(job.result) ? job.result : [];
+            const researched = result.length;
+            setResearch(
+              job.status === "COMPLETED"
+                ? { kind: "done", researched }
+                : {
+                    kind: "error",
+                    message: job.error ?? "Research agent failed.",
+                  }
+            );
+            setRefreshIndex((i) => i + 1);
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setResearch({ kind: "idle" });
+        });
+    }, POLL_INTERVAL);
+
+    const timeout = window.setTimeout(() => {
+      if (!cancelled) {
+        window.clearInterval(timer);
+        setResearch({ kind: "idle" });
+        setRefreshIndex((i) => i + 1);
+      }
+    }, POLL_TIMEOUT);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.clearTimeout(timeout);
+    };
+  }, [research]);
+
   React.useEffect(() => {
     if (scout.kind !== "polling") return;
     let cancelled = false;
@@ -289,7 +373,7 @@ export default function StoriesPage() {
                 pipeline.
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Button
                 variant="outline"
                 size="sm"
@@ -323,6 +407,24 @@ export default function StoriesPage() {
                   <>
                     <GitMerge className="size-3.5" />
                     Run dedup
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRunResearch}
+                disabled={research.kind === "polling"}
+              >
+                {research.kind === "polling" ? (
+                  <>
+                    <RefreshCw className="size-3.5 animate-spin" />
+                    Researching…
+                  </>
+                ) : (
+                  <>
+                    <Telescope className="size-3.5" />
+                    Run research
                   </>
                 )}
               </Button>
@@ -371,6 +473,19 @@ export default function StoriesPage() {
             <div className="mb-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               <AlertTriangle className="size-3.5 shrink-0" />
               {dedup.message}
+            </div>
+          )}
+          {research.kind === "done" && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">
+              <Telescope className="size-3.5 shrink-0" />
+              Research complete — {research.researched} story/stories researched
+              with a package of gathered sources.
+            </div>
+          )}
+          {research.kind === "error" && research.message && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              <AlertTriangle className="size-3.5 shrink-0" />
+              {research.message}
             </div>
           )}
           {ingest.kind === "error" && ingest.message && (
@@ -434,32 +549,35 @@ export default function StoriesPage() {
                   </span>
                 )}
               </p>
-              <Table>
+              <Table className="table-fixed">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[30%]">Title</TableHead>
-                    <TableHead>Sources</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-center">Importance</TableHead>
-                    <TableHead className="text-center">Research</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Discovered</TableHead>
+                    <TableHead className="w-[28%]">Title</TableHead>
+                    <TableHead className="w-[20%]">Sources</TableHead>
+                    <TableHead className="w-[9%]">Category</TableHead>
+                    <TableHead className="w-[7%] text-center">Importance</TableHead>
+                    <TableHead className="w-[8%] text-center">Research</TableHead>
+                    <TableHead className="w-[8%]">Status</TableHead>
+                    <TableHead className="w-[12%] text-right">Discovered</TableHead>
+                    <TableHead className="w-[8%] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {state.data.items.map((story) => (
                     <TableRow key={story.id}>
                       <TableCell>
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-medium leading-tight line-clamp-1">
-                            {story.title}
-                          </span>
-                          {story.author && (
-                            <span className="text-xs text-muted-foreground">
-                              {story.author}
+                        <Link href={`/dashboard/stories/${story.id}`} className="hover:underline">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium leading-tight line-clamp-1">
+                              {story.title}
                             </span>
-                          )}
-                        </div>
+                            {story.author && (
+                              <span className="text-xs text-muted-foreground">
+                                {story.author}
+                              </span>
+                            )}
+                          </div>
+                        </Link>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
@@ -467,7 +585,8 @@ export default function StoriesPage() {
                             ? story.source_names.map((name) => (
                                 <span
                                   key={name}
-                                  className="inline-flex items-center rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 text-xs"
+                                  title={name}
+                                  className="inline-flex items-center rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 text-xs truncate max-w-full overflow-hidden"
                                 >
                                   {name}
                                 </span>
@@ -477,7 +596,7 @@ export default function StoriesPage() {
                       </TableCell>
                       <TableCell>
                         {story.category ? (
-                          <span className="text-xs">{story.category}</span>
+                          <span className="text-xs truncate block">{story.category}</span>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
@@ -517,6 +636,50 @@ export default function StoriesPage() {
                       </TableCell>
                       <TableCell className="text-right text-xs text-muted-foreground whitespace-nowrap">
                         {formatDateTime(story.discovered_at)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {deleteConfirmId === story.id ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span className="text-xs text-muted-foreground mr-0.5">Delete?</span>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="h-7 px-2"
+                              onClick={() => handleDeleteStory(story.id)}
+                            >
+                              Yes
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2"
+                              onClick={() => setDeleteConfirmId(null)}
+                            >
+                              No
+                            </Button>
+                            {deleteErrorId === story.id && (
+                              <span
+                                className="text-xs text-destructive whitespace-nowrap"
+                                title="Failed to delete — try again"
+                              >
+                                Error
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 px-0 text-muted-foreground hover:text-destructive"
+                            aria-label={`Delete story ${story.id}`}
+                            onClick={() => {
+                              setDeleteErrorId(null);
+                              setDeleteConfirmId(story.id);
+                            }}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

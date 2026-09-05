@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -121,5 +121,9 @@ async def delete_story(
     story = await session.get(Story, story_id)
     if story is None:
         raise HTTPException(status_code=404, detail="Story not found")
-    await session.delete(story)
+    # Bulk delete: let the database cascade dependents (claims, evidence,
+    # research runs, articles, links, social/media, publishing jobs) and
+    # SET NULL agent runs / merged references. The ORM would otherwise try
+    # to nullify non-null FKs (e.g. articles.story_id) and fail.
+    await session.execute(delete(Story).where(Story.id == story_id))
     await session.commit()

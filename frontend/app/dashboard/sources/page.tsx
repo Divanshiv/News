@@ -443,7 +443,8 @@ export default function SourcesPage() {
                             variant="outline"
                             size="xs"
                             onClick={() => handleFetchSource(source.id)}
-                            disabled={isFetchingThis}
+                            disabled={isFetchingThis || !source.rss_url}
+                            title={source.rss_url ? "Fetch feed" : "No RSS feed — reference source"}
                           >
                             {isFetchingThis ? (
                               <RefreshCw className="size-3 animate-spin" />

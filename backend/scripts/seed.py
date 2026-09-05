@@ -19,6 +19,7 @@ SEED_SOURCES = [
     {"name": "BleepingComputer", "url": "https://www.bleepingcomputer.com", "rss_url": "https://www.bleepingcomputer.com/feed/", "source_type": "news", "category": "Cybersecurity", "reliability_score": 0.75},
     {"name": "Reuters World", "url": "https://www.reuters.com", "rss_url": "https://feeds.reuters.com/reuters/worldNews", "source_type": "news", "category": "World", "reliability_score": 0.9},
     {"name": "PIB Press Releases", "url": "https://pib.gov.in", "rss_url": "https://pib.gov.in/allreleasesrss.aspx", "source_type": "government", "category": "India", "reliability_score": 0.9, "license_notes": "Government press releases; check reproduction terms."},
+    {"name": "OSINT Framework", "url": "https://osintframework.com", "rss_url": None, "source_type": "research", "category": None, "reliability_score": 0.5, "license_notes": "Manual OSINT tool directory — no RSS feed; human research reference only, never ingested."},
 ]
 
 
