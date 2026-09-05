@@ -8,7 +8,7 @@ tests green, and the app runnable locally.
 | 1 Foundation | Repo, frontend, FastAPI backend, PostgreSQL, env, health endpoint, dashboard shell | Frontend runs, backend runs, database connects | ✅ |
 | 2 Database | ORM models, migrations, CRUD APIs, seed data | CRUD works for Source, Story, Article | ✅ |
 | 3 RSS | Source registry, feed fetcher/parser/normalizer, ingestion job | New RSS items appear in dashboard | ✅ `docs/ingestion.md` |
-| 4 Deduplication | Title/description similarity, story merging, cross-source dedup | One event = one story with multiple sources | ⏳ (canonical-URL + same-source title dedup landed in P3) |
+| 4 Deduplication | Title/description similarity, story merging, cross-source dedup | One event = one story with multiple sources | ✅ `docs/dedup.md` |
 | 5 Scout agent | LLM provider interface, Ollama provider, structured scoring | Stories get category/importance/should_research | |
 | 6 Research | Web search + URL fetch tools, ResearchAgent, source collection | Story produces a research package | |
 | 7 Verification | Claim + Evidence models, ClaimExtractor, VerificationAgent | Claims show status/confidence/evidence/contradictions | |

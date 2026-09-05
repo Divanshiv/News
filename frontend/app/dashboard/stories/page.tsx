@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Newspaper, RefreshCw, Rocket } from "lucide-react";
+import { AlertTriangle, GitMerge, Newspaper, RefreshCw, Rocket } from "lucide-react";
 
 import {
   StatusBadge,
@@ -53,9 +53,16 @@ type IngestState =
   | { kind: "polling"; jobId: string; startedAt: number }
   | { kind: "error"; message: string };
 
+type DedupState =
+  | { kind: "idle" }
+  | { kind: "polling"; jobId: string }
+  | { kind: "done"; merged: number }
+  | { kind: "error"; message: string };
+
 export default function StoriesPage() {
   const [state, setState] = React.useState<StoriesState>({ kind: "loading" });
   const [ingest, setIngest] = React.useState<IngestState>({ kind: "idle" });
+  const [dedup, setDedup] = React.useState<DedupState>({ kind: "idle" });
   const [refreshIndex, setRefreshIndex] = React.useState(0);
 
   const fetchStories = React.useCallback(() => {
@@ -142,6 +149,65 @@ export default function StoriesPage() {
       });
   }, []);
 
+  const handleRunDedup = React.useCallback(() => {
+    setDedup({ kind: "idle" });
+    apiPost<IngestionRunResponse>("/api/v1/dedup/run")
+      .then((res) => {
+        setDedup({ kind: "polling", jobId: res.job_id });
+      })
+      .catch((error: unknown) => {
+        setDedup({
+          kind: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to run deduplication.",
+        });
+      });
+  }, []);
+
+  React.useEffect(() => {
+    if (dedup.kind !== "polling") return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      apiGet<IngestionJob>(`/api/v1/ingestion/jobs/${dedup.jobId}`)
+        .then((job) => {
+          if (cancelled) return;
+          if (job.status === "COMPLETED" || job.status === "FAILED") {
+            const result = Array.isArray(job.result) ? job.result : [];
+            const merged = result.length;
+            setDedup(
+              job.status === "COMPLETED"
+                ? { kind: "done", merged }
+                : {
+                    kind: "error",
+                    message: job.error ?? "Deduplication failed.",
+                  }
+            );
+            setRefreshIndex((i) => i + 1);
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setDedup({ kind: "idle" });
+        });
+    }, POLL_INTERVAL);
+
+    const timeout = window.setTimeout(() => {
+      if (!cancelled) {
+        window.clearInterval(timer);
+        setDedup({ kind: "idle" });
+        setRefreshIndex((i) => i + 1);
+      }
+    }, POLL_TIMEOUT);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.clearTimeout(timeout);
+    };
+  }, [dedup]);
+
   const isLoading = state.kind === "loading" || ingest.kind === "polling";
 
   return (
@@ -157,27 +223,59 @@ export default function StoriesPage() {
                 pipeline.
               </CardDescription>
             </div>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleRunIngestion}
-              disabled={ingest.kind === "polling"}
-            >
-              {ingest.kind === "polling" ? (
-                <>
-                  <RefreshCw className="size-3.5 animate-spin" />
-                  Ingesting…
-                </>
-              ) : (
-                <>
-                  <Rocket className="size-3.5" />
-                  Run ingestion
-                </>
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRunDedup}
+                disabled={dedup.kind === "polling"}
+              >
+                {dedup.kind === "polling" ? (
+                  <>
+                    <RefreshCw className="size-3.5 animate-spin" />
+                    Deduplicating…
+                  </>
+                ) : (
+                  <>
+                    <GitMerge className="size-3.5" />
+                    Run dedup
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleRunIngestion}
+                disabled={ingest.kind === "polling"}
+              >
+                {ingest.kind === "polling" ? (
+                  <>
+                    <RefreshCw className="size-3.5 animate-spin" />
+                    Ingesting…
+                  </>
+                ) : (
+                  <>
+                    <Rocket className="size-3.5" />
+                    Run ingestion
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
+          {dedup.kind === "done" && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">
+              <GitMerge className="size-3.5 shrink-0" />
+              Deduplication complete — {dedup.merged} story cluster(s) merged.
+            </div>
+          )}
+          {dedup.kind === "error" && dedup.message && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              <AlertTriangle className="size-3.5 shrink-0" />
+              {dedup.message}
+            </div>
+          )}
           {ingest.kind === "error" && ingest.message && (
             <div className="mb-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               <AlertTriangle className="size-3.5 shrink-0" />

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db_session
 from app.models.source import Source
-from app.schemas.ingestion import IngestionJobRead, IngestionRunResponse, SourceIngestResultRead
+from app.schemas.ingestion import IngestionJobRead, IngestionRunResponse
 from app.workers.jobs import job_runner
 
 router = APIRouter(tags=["ingestion"])
@@ -27,7 +27,7 @@ def _job_to_read(job) -> IngestionJobRead:
         started_at=epoch(job.started_at),
         completed_at=epoch(job.completed_at),
         error=job.error,
-        result=[SourceIngestResultRead(**item) for item in result] if result else None,
+        result=result,
     )
 
 

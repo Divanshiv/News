@@ -96,6 +96,7 @@ const STATUS_NOTES: Record<StoryStatus, string> = {
   APPROVED: "Signed off for release",
   PUBLISHED: "Live on the public site",
   REJECTED: "Flagged, not publishable",
+  MERGED: "Absorbed into a canonical story",
 };
 
 export default function OverviewPage() {

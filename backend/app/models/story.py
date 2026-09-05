@@ -14,6 +14,7 @@ STORY_STATUSES = (
     "APPROVED",
     "PUBLISHED",
     "REJECTED",
+    "MERGED",
 )
 
 
@@ -32,6 +33,9 @@ class Story(Base):
     status: Mapped[str] = mapped_column(String(20), default="DISCOVERED")
     importance_score: Mapped[float | None] = mapped_column(Float)
     confidence_score: Mapped[float | None] = mapped_column(Float)
+    merged_into_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stories.id", ondelete="SET NULL"), index=True
+    )
     discovered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -43,6 +47,14 @@ class Story(Base):
         back_populates="story", cascade="all, delete-orphan"
     )
     article: Mapped["Article | None"] = relationship(back_populates="story")
+    merged_into: Mapped["Story | None"] = relationship(
+        remote_side="Story.id", back_populates="merged_stories"
+    )
+    merged_stories: Mapped[list["Story"]] = relationship(
+        back_populates="merged_into",
+        cascade="all, delete-orphan",
+        foreign_keys="Story.merged_into_id",
+    )
 
 
 class StorySource(Base):

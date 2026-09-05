@@ -11,7 +11,8 @@ export type StoryStatus =
   | "REVIEW"
   | "APPROVED"
   | "PUBLISHED"
-  | "REJECTED";
+  | "REJECTED"
+  | "MERGED";
 
 export type ListResponse<T> = {
   items: T[];

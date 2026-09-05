@@ -103,6 +103,54 @@ class TestIngestSource:
             links = (await session.execute(select(StorySource))).scalars().all()
             assert len(links) == 1
 
+    async def test_cross_source_fuzzy_match_links_not_duplicates(self):
+        first_source = await _create_source(name="First News", rss_url="https://one.example.com/feed")
+        second_source = await _create_source(name="Second News", rss_url="https://two.example.com/feed")
+
+        feed_a = RSS_FEED_XML.encode()
+        second_feed_xml = RSS_FEED_XML.replace(
+            "https://example.com/feed.xml", "https://two.example.com/feed"
+        ).replace(
+            "https://example.com/stories/", "https://two.example.com/stories/"
+        ).replace(
+            "Alpha emerges from stealth with new chip",
+            "Alpha emerges from stealth with a new chip today",
+        )
+        feed_b = second_feed_xml.encode()
+
+        fetcher = FakeFetcher(
+            {
+                "https://one.example.com/feed": feed_a,
+                "https://two.example.com/feed": feed_b,
+            }
+        )
+        service = IngestionService(fetcher=fetcher)
+        await service.ingest_source(first_source)
+
+        async with async_session_factory() as session:
+            before = await session.scalar(
+                select(Story).where(Story.title == "Alpha emerges from stealth with new chip")
+            )
+            assert before is not None
+            before_id = before.id
+
+        second_result = await service.ingest_source(second_source)
+
+        assert second_result.created == 0
+        assert second_result.skipped == 4
+        async with async_session_factory() as session:
+            dupe = await session.scalar(
+                select(Story).where(Story.title == "Alpha emerges from stealth with new chip")
+            )
+            assert dupe.id == before_id
+            alphas = (
+                await session.execute(
+                    select(StorySource).where(StorySource.story_id == before_id)
+                )
+            ).scalars().all()
+            assert {link.source_id for link in alphas} == {first_source.id, second_source.id}
+            assert await _count(Story) == 4
+
     async def test_marks_source_with_fetch_error_and_creates_no_stories(self):
         source = await _create_source()
         failing = IngestionService(

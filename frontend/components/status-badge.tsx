@@ -8,7 +8,8 @@ export type StoryStatus =
   | "REVIEW"
   | "APPROVED"
   | "PUBLISHED"
-  | "REJECTED";
+  | "REJECTED"
+  | "MERGED";
 
 type StatusStyle = {
   label: string;
@@ -64,6 +65,12 @@ const STATUS_STYLES: Record<StoryStatus, StatusStyle> = {
     dot: "bg-red-500",
     badge:
       "border-red-500/30 bg-red-500/10 text-red-600 dark:border-red-400/30 dark:text-red-400",
+  },
+  MERGED: {
+    label: "Merged",
+    dot: "bg-slate-400",
+    badge:
+      "border-slate-400/40 bg-slate-500/10 text-slate-500 dark:border-slate-400/30 dark:text-slate-400",
   },
 };
 

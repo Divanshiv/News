@@ -29,4 +29,4 @@ class IngestionJobRead(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     error: str | None = None
-    result: list[SourceIngestResultRead] | None = None
+    result: list[dict] | None = None

@@ -9,14 +9,15 @@ PUBLIC SOURCES → INGESTION → DEDUPLICATION → SCOUT → RESEARCH → CLAIMS
 
 ## Status
 
-**Phase 3 — RSS ingestion (current).** Feed registry, fetch/parse/normalize
-pipeline, background ingestion job, dedup, and ingestion-aware dashboard tables
-(stories + sources). 61 passing backend tests. Full core schema (14 tables),
-Alembic migrations, CRUD API for sources/stories/articles, seed data.
+**Phase 4 — Deduplication (current).** Title/description similarity (stdlib
+only) converges one news event onto one story with multiple linked sources,
+via a `dedupe_all` maintenance job plus manual merge and near-miss review APIs.
+RSS ingestion with exact + fuzzy cross-source dedup ships stories into the
+dashboard. 83 passing backend tests. Full core schema (14 tables), Alembic
+migrations, CRUD API for sources/stories/articles, seed data.
 
-Planned pipeline: cross-source dedup → scout/research/verification agents →
-article writing → Instagram content → human approval → publish. See
-`docs/roadmap.md`.
+Planned pipeline: scout/research/verification agents → article writing →
+Instagram content → human approval → publish. See `docs/roadmap.md`.
 
 ## Stack
 
@@ -96,10 +97,11 @@ docker compose up db
 - `GET /` — service info; interactive API docs at `/docs`
 - Full CRUD API: `/api/v1/sources`, `/api/v1/stories` (auto-slugs, source linking), `/api/v1/articles` (auto `published_at` on publish) — paginated list responses (`items/total/limit/offset`) with status/category filters
 - RSS ingestion: `POST /api/v1/ingestion/run`, `POST /api/v1/ingestion/sources/{id}/fetch`, `GET /api/v1/ingestion/jobs/{id}` (async jobs, poll for completion) — see `docs/ingestion.md`
-- Postgres schema: 13 models / 14 tables (sources, stories, claims, evidence, research runs, articles, social posts, media assets, agent runs, publishing jobs, users, audit log) via Alembic migration `e7f2a91b5c03` (RSS fields)
+- Deduplication: `POST /api/v1/dedup/run` (maintenance merge job), `POST /api/v1/dedup/merge` (manual merge), `GET /api/v1/dedup/candidates` (near-miss review) — see `docs/dedup.md`
+- Postgres schema: 13 models / 14 tables (sources, stories, claims, evidence, research runs, articles, social posts, media assets, agent runs, publishing jobs, users, audit log) via Alembic migration `c9d8e7f0a1b2` (story merge fields)
 - Seed script: admin operator + 10 RSS sources (`python -m scripts.seed`)
-- Backend test suite (`uv run pytest`, 61 tests)
-- Next.js frontend: public landing pages + admin dashboard (sidebar, dark mode, health card, sources/stories tables with live ingestion controls)
+- Backend test suite (`uv run pytest`, 83 tests)
+- Next.js frontend: public landing pages + admin dashboard (sidebar, dark mode, health card, sources/stories tables with live ingestion controls + Run dedup)
 
 ## Tests
 
@@ -128,6 +130,7 @@ All configuration via environment variables — see `.env.example` and `backend/
 
 - `docs/architecture.md` — system architecture and layer map
 - `docs/ingestion.md` — RSS pipeline, job runner, ingestion API
+- `docs/dedup.md` — similarity rules, merging, dedup APIs
 - `docs/database.md` — schema, migrations, seed, testing
 - `docs/roadmap.md` — phased development plan (12 phases)
 

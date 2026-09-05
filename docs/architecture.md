@@ -1,6 +1,6 @@
 # Architecture
 
-## Phase 3 — RSS ingestion (current)
+## Phase 4 — Deduplication (current)
 
 The repository is a monorepo with three top-level components:
 
@@ -28,13 +28,14 @@ Browser
 
 | Layer      | Path                  | Responsibility                          |
 |------------|-----------------------|-----------------------------------------|
-| API        | `app/api/`            | HTTP routers: health, sources, stories, articles, ingestion |
+| API        | `app/api/`            | HTTP routers: health, sources, stories, articles, ingestion, dedup |
 | Core       | `app/core/`           | Settings, DB engine/session, structured JSON logging |
 | Models     | `app/models/`         | SQLAlchemy ORM models (14 tables)      |
 | Schemas    | `app/schemas/`        | Pydantic request/response models       |
 | Services   | `app/services/rss/`   | Feed fetch (httpx), parse (feedparser), normalize (canonical URLs) |
 | Services   | `app/services/ingestion.py` | Ingestion pipeline, dedup, Story/Source linking |
-| Workers    | `app/workers/`        | In-process async job runner + ingestion job handlers |
+| Services   | `app/services/dedup/` | Similarity scoring + story merging (P4)|
+| Workers    | `app/workers/`        | In-process async job runner + ingestion/dedup job handlers |
 | Agents     | `app/agents/`         | Scout/Research/Verification/Writer (P5+)|
 | Tools      | `app/tools/`          | WebSearch/URLFetch/RSSFetch (P6+)      |
 
@@ -81,4 +82,5 @@ postgres (local Homebrew :5432 or `docker compose up db`)
 | 1 Foundation  | ✅ done |
 | 2 Database    | ✅ done |
 | 3 RSS ingestion | ✅ done — see `docs/ingestion.md` |
-| 4+            | planned — see `docs/roadmap.md` |
+| 4 Deduplication | ✅ done — see `docs/dedup.md` |
+| 5+            | planned — see `docs/roadmap.md` |

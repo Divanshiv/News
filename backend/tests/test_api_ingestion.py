@@ -94,3 +94,13 @@ class TestGetJob:
         resp = await client.get("/api/v1/ingestion/jobs/nope")
         assert resp.status_code == 404
         assert resp.json()["detail"] == "Job not found"
+
+    async def test_dedupe_job_result_with_merge_clusters_serializes(self, client):
+        resp = await client.post("/api/v1/dedup/run")
+        assert resp.status_code == 202
+
+        job = await _run_job(client, resp.json()["job_id"])
+        assert job["status"] == "COMPLETED"
+        assert job["result"] == [
+            {"keep_id": 1, "absorbed_ids": [2], "moved_links": 1}
+        ]

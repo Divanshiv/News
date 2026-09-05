@@ -27,6 +27,7 @@ def isolated_job_runner():
     job_runner.reset()
     job_runner.register("ingest_all", fake_ingest_all)
     job_runner.register("ingest_source", fake_ingest_source)
+    job_runner.register("dedupe_all", fake_dedupe_all)
     yield
     job_runner.reset()
 
@@ -55,6 +56,16 @@ async def fake_ingest_source(payload: dict) -> dict:
         "skipped": 0,
         "error": None,
     }
+
+
+async def fake_dedupe_all(payload: dict) -> list[dict]:
+    return [
+        {
+            "keep_id": 1,
+            "absorbed_ids": [2],
+            "moved_links": 1,
+        }
+    ]
 
 
 @pytest.fixture

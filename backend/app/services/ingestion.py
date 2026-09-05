@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.database import async_session_factory
 from app.models.source import Source
 from app.models.story import Story, StorySource
+from app.services.dedup.similarity import is_same_event, pair_score
 from app.services.rss.fetch import RSSFetcher, RSSFetchError
 from app.services.rss.normalize import canonicalize_url, normalize_title
 from app.services.rss.parse import FeedItem, ParsedFeed, parse_feed
@@ -18,6 +19,7 @@ from app.services.slugs import unique_slug
 logger = logging.getLogger(__name__)
 
 DUPLICATE_WINDOW_DAYS = 7
+FUZZY_CANDIDATE_LIMIT = 300
 
 
 @dataclass
@@ -110,9 +112,9 @@ class IngestionService:
         canonical = canonicalize_url(item.url)
         if canonical is None:
             return {"title": item.title, "created": False, "reason": "invalid_url"}
-        existing = await self._find_duplicate(session, source, item, canonical)
-        if existing is not None:
-            await self._link_if_missing(session, existing, source)
+        match = await self._find_match(session, source, item, canonical)
+        if match is not None:
+            await self._link_if_missing(session, match, source)
             return {"title": item.title, "created": False, "reason": "duplicate"}
         slug = await unique_slug(session, Story, item.title)
         story = Story(
@@ -139,30 +141,70 @@ class IngestionService:
         )
         return {"title": item.title, "created": True, "reason": None}
 
-    async def _find_duplicate(
+    async def _find_match(
         self, session: AsyncSession, source: Source, item: FeedItem, canonical: str
     ) -> Story | None:
-        by_url = await session.scalar(select(Story).where(Story.url == canonical))
+        by_url = await session.scalar(
+            select(Story).where(Story.url == canonical, Story.status != "MERGED")
+        )
         if by_url is not None:
             return by_url
         window_start = datetime.now(timezone.utc) - timedelta(days=DUPLICATE_WINDOW_DAYS)
-        candidates = (
+        same_source = (
             await session.execute(
                 select(Story)
                 .join(StorySource)
                 .where(
                     StorySource.source_id == source.id,
+                    Story.status != "MERGED",
                     Story.discovered_at >= window_start,
                 )
             )
         ).scalars().all()
         expected = normalize_title(item.title)
-        for candidate in candidates:
-            if candidate.url and canonicalize_url(candidate.url) == canonical:
-                return candidate
+        for candidate in same_source:
             if normalize_title(candidate.title) == expected:
                 return candidate
-        return None
+
+        candidates = (
+            await session.execute(
+                select(Story)
+                .where(
+                    Story.status != "MERGED",
+                    Story.discovered_at >= window_start,
+                    Story.url.is_not(None),
+                )
+                .order_by(Story.discovered_at.desc())
+                .limit(FUZZY_CANDIDATE_LIMIT)
+            )
+        ).scalars().all()
+
+        own_ids = set(
+            (
+                await session.execute(
+                    select(StorySource.story_id).where(StorySource.source_id == source.id)
+                )
+            ).scalars().all()
+        )
+        best: Story | None = None
+        best_score = 0.0
+        for candidate in candidates:
+            if candidate.id in own_ids:
+                continue
+            if canonicalize_url(candidate.url) == canonical:
+                continue
+            if normalize_title(candidate.title) == expected:
+                return candidate
+            if candidate.url is None:
+                continue
+            if is_same_event(item.title, item.summary, candidate.title, candidate.summary):
+                score = pair_score(
+                    item.title, item.summary, candidate.title, candidate.summary
+                )
+                if score > best_score:
+                    best = candidate
+                    best_score = score
+        return best
 
     async def _link_if_missing(
         self, session: AsyncSession, story: Story, source: Source
