@@ -9,8 +9,28 @@ from app.models.article import Article
 from app.models.story import Story
 from app.schemas.article import ArticleCreate, ArticleRead, ArticleUpdate
 from app.schemas.common import ListResponse
+from app.schemas.ingestion import IngestionRunResponse
+from app.workers.jobs import job_runner
 
 router = APIRouter(tags=["articles"])
+
+
+@router.post("/generate", response_model=IngestionRunResponse, status_code=202)
+async def generate_articles():
+    job = job_runner.submit("generate_article")
+    return IngestionRunResponse(job_id=job.job_id, job_name=job.name, status=job.status)
+
+
+@router.post("/generate/stories/{story_id}", response_model=IngestionRunResponse, status_code=202)
+async def generate_article_for_story(
+    story_id: int,
+    session: AsyncSession = Depends(get_db_session),
+):
+    story = await session.get(Story, story_id)
+    if story is None:
+        raise HTTPException(status_code=404, detail="Story not found")
+    job = job_runner.submit("generate_article", {"story_id": story_id})
+    return IngestionRunResponse(job_id=job.job_id, job_name=job.name, status=job.status)
 
 
 @router.get("", response_model=ListResponse[ArticleRead])
@@ -53,6 +73,18 @@ async def create_article(
     session.add(article)
     await session.commit()
     await session.refresh(article)
+    return article
+
+
+@router.get("/by-story/{story_id}", response_model=ArticleRead | None)
+async def get_article_by_story(
+    story_id: int,
+    session: AsyncSession = Depends(get_db_session),
+):
+    result = await session.execute(
+        select(Article).where(Article.story_id == story_id).limit(1)
+    )
+    article = result.scalar_one_or_none()
     return article
 
 

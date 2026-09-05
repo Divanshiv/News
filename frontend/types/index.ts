@@ -32,6 +32,8 @@ export type Story = {
   confidence_score: number | null;
   should_research: boolean | null;
   scout_reason: string | null;
+  scouted_at: string | null;
+  researched_at: string | null;
   discovered_at: string;
   updated_at: string;
   url: string | null;
@@ -100,10 +102,25 @@ export type ScoutRunResult =
       reason: string;
     };
 
+export type ResearchRunResult =
+  | {
+      story_id: number;
+      title: string;
+      error: string;
+    }
+  | {
+      story_id: number;
+      title: string;
+      sources: number;
+      claims: number;
+      run_id: number;
+    };
+
 export type IngestionJobResult =
   | SourceIngestResult
   | DedupRunResult
-  | ScoutRunResult;
+  | ScoutRunResult
+  | ResearchRunResult;
 
 export type IngestionJob = {
   job_id: string;
@@ -151,10 +168,69 @@ export type Article = {
   updated_at: string;
 };
 
+export type ArticleWithStory = Article & {
+  story_title: string | null;
+  story_category: string | null;
+  story_slug: string | null;
+  story_confidence: number | null;
+  story_url: string | null;
+};
+
 export type DedupCandidate = {
   story_id_a: number;
   title_a: string;
   story_id_b: number;
   title_b: string;
   score: number;
+};
+
+export type ResearchRunRecord = {
+  id: number;
+  story_id: number;
+  agent_name: string;
+  status: string;
+  output: {
+    sources: {
+      url: string;
+      title: string;
+      snippet: string;
+      tier: string;
+      relevance: number;
+      fetched: boolean;
+    }[];
+  } | null;
+  error: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+};
+
+export type StoryResearchSource = {
+  source_id: number;
+  name: string | null;
+  url: string | null;
+  relationship: string;
+  relevance_score: number | null;
+};
+
+export type ResearchEvidence = {
+  id: number;
+  evidence_text: string;
+  url: string | null;
+  source_id: number | null;
+};
+
+export type ResearchClaim = {
+  id: number;
+  claim_text: string;
+  status: string;
+  confidence_score: number | null;
+  evidences: ResearchEvidence[];
+};
+
+export type StoryResearch = {
+  story_id: number;
+  title: string;
+  runs: ResearchRunRecord[];
+  sources: StoryResearchSource[];
+  claims: ResearchClaim[];
 };

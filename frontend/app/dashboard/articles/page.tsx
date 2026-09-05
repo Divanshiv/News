@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, FileText, RefreshCw } from "lucide-react";
+import { AlertTriangle, FileText, PenLine, RefreshCw } from "lucide-react";
+import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,8 +17,8 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
-import { apiGet } from "@/lib/api";
-import type { Article, ListResponse } from "@/types";
+import { apiGet, apiPost } from "@/lib/api";
+import type { Article, IngestionRunResponse, ListResponse } from "@/types";
 
 const STATUS_TONE: Record<string, string> = {
   PUBLISHED: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
@@ -34,6 +35,7 @@ export default function ArticlesPage() {
     | { kind: "error"; message: string }
   >({ kind: "loading" });
   const [tick, setTick] = React.useState(0);
+  const [generating, setGenerating] = React.useState(false);
 
   const load = React.useCallback(() => {
     let cancelled = false;
@@ -65,6 +67,19 @@ export default function ArticlesPage() {
     setTick((t) => t + 1);
   }, []);
 
+  const handleGenerate = React.useCallback(async () => {
+    setGenerating(true);
+    try {
+      await apiPost<IngestionRunResponse>("/api/v1/articles/generate");
+      setTimeout(() => {
+        setGenerating(false);
+        refresh();
+      }, 2500);
+    } catch {
+      setGenerating(false);
+    }
+  }, [refresh]);
+
   return (
     <Card>
       <CardHeader>
@@ -76,10 +91,16 @@ export default function ArticlesPage() {
               here is published without sign-off.
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={refresh}>
-            <RefreshCw className="size-3.5" />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleGenerate} disabled={generating}>
+              <PenLine className={`size-3.5 ${generating ? "animate-spin" : ""}`} />
+              {generating ? "Generating..." : "Generate for verified"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={refresh}>
+              <RefreshCw className="size-3.5" />
+              Refresh
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -115,27 +136,29 @@ export default function ArticlesPage() {
         {state.kind === "ok" && state.data.items.length > 0 && (
           <div className="flex flex-col gap-3">
             <p className="text-xs text-muted-foreground">{state.data.total} articles</p>
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Headline</TableHead>
-                  <TableHead>Story</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Updated</TableHead>
+                  <TableHead className="w-[55%]">Headline</TableHead>
+                  <TableHead className="w-[15%]">Story</TableHead>
+                  <TableHead className="w-[15%]">Status</TableHead>
+                  <TableHead className="w-[15%] text-right">Updated</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {state.data.items.map((article) => (
                   <TableRow key={article.id}>
-                    <TableCell className="max-w-md">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-medium">{article.headline}</span>
-                        {article.subheadline && (
-                          <span className="text-xs text-muted-foreground line-clamp-1">
-                            {article.subheadline}
-                          </span>
-                        )}
-                      </div>
+                    <TableCell>
+                      <Link href={`/dashboard/articles/${article.id}`} className="hover:underline">
+                        <div className="flex flex-col gap-0.5 min-w-0">
+                          <span className="font-medium truncate">{article.headline}</span>
+                          {article.subheadline && (
+                            <span className="text-xs text-muted-foreground truncate">
+                              {article.subheadline}
+                            </span>
+                          )}
+                        </div>
+                      </Link>
                     </TableCell>
                     <TableCell>
                       <span className="text-xs text-muted-foreground">#{article.story_id}</span>

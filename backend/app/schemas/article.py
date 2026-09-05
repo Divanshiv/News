@@ -39,3 +39,21 @@ class ArticleRead(BaseModel):
     status: str
     published_at: datetime | None
     updated_at: datetime
+
+
+class ArticleWithStory(ArticleRead):
+    story_title: str | None = None
+    story_category: str | None = None
+    story_slug: str | None = None
+    story_confidence: float | None = None
+    story_url: str | None = None
+
+
+class ArticleGenerateRequest(BaseModel):
+    pass
+
+
+class ArticleGenerateResponse(BaseModel):
+    job_id: str
+    job_name: str
+    status: str
