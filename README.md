@@ -9,7 +9,7 @@ PUBLIC SOURCES → INGESTION → DEDUPLICATION → SCOUT → RESEARCH → CLAIMS
 
 ## Status
 
-**Phase 1 — Foundation (current).** Frontend runs, backend runs, PostgreSQL connects, health endpoint live.
+**Phase 2 — Database (current).** Full core schema (14 tables), Alembic migrations, CRUD API for sources/stories/articles, seed data, 26 passing tests.
 
 Planned pipeline: RSS ingestion → dedup → scout/research/verification agents → article writing → Instagram content → human approval → publish. See `docs/roadmap.md`.
 
@@ -85,11 +85,14 @@ docker compose up db
 # then point DATABASE_URL in backend/.env at postgres:5432
 ```
 
-## What works right now (Phase 1)
+## What works right now
 
 - `GET /api/v1/health` — backend + database connectivity status
 - `GET /` — service info; interactive API docs at `/docs`
-- Backend test suite (`uv run pytest`, 3 tests)
+- Full CRUD API: `/api/v1/sources`, `/api/v1/stories` (auto-slugs, source linking), `/api/v1/articles` (auto `published_at` on publish) — paginated list responses (`items/total/limit/offset`) with status/category filters
+- Postgres schema: 13 models / 14 tables (sources, stories, claims, evidence, research runs, articles, social posts, media assets, agent runs, publishing jobs, users, audit log) via Alembic migration `1851973ad4c4`
+- Seed script: admin operator + 10 RSS sources (`python -m scripts.seed`)
+- Backend test suite (`uv run pytest`, 26 tests)
 - Next.js frontend: public landing pages + admin dashboard shell with sidebar navigation, dark mode, and a live system-health card wired to the backend
 
 ## Tests
@@ -118,6 +121,7 @@ All configuration via environment variables — see `.env.example` and `backend/
 ## Documentation
 
 - `docs/architecture.md` — system architecture and layer map
+- `docs/database.md` — schema, migrations, seed, testing
 - `docs/roadmap.md` — phased development plan (12 phases)
 
 ## Editorial rules (non-negotiable)

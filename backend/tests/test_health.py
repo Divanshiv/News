@@ -1,16 +1,16 @@
 from app.core.config import get_settings
 
 
-def test_root_endpoint(client):
-    response = client.get("/")
+async def test_root_endpoint(client):
+    response = await client.get("/")
     assert response.status_code == 200
     data = response.json()
     assert data["service"] == "ai-newsroom-backend"
     assert data["health"] == "/api/v1/health"
 
 
-def test_health_endpoint(client):
-    response = client.get("/api/v1/health")
+async def test_health_endpoint(client):
+    response = await client.get("/api/v1/health")
     assert response.status_code == 200
     data = response.json()
     assert data["service"] == "ai-newsroom-backend"
@@ -20,7 +20,7 @@ def test_health_endpoint(client):
     assert data["timestamp"]
 
 
-def test_settings_defaults():
+async def test_settings_defaults():
     settings = get_settings()
     assert settings.app_name == "AI Newsroom Backend"
     assert settings.app_version == "0.1.0"
