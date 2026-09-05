@@ -5,19 +5,26 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.articles import router as articles_router
+from app.api.backfill import router as backfill_router
 from app.api.dedup import router as dedup_router
 from app.api.health import router as health_router
 from app.api.ingestion import router as ingestion_router
 from app.api.jobs import router as jobs_router
 from app.api.meta import router as meta_router
+from app.api.research import router as research_router
 from app.api.scout import router as scout_router
 from app.api.sources import router as sources_router
 from app.api.stories import router as stories_router
+from app.api.verification import router as verification_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
+from app.workers import article as _article  # noqa: F401  registers job handlers on the shared runner
+from app.workers import backfill as _backfill  # noqa: F401  registers job handlers on the shared runner
 from app.workers import dedup as _dedup  # noqa: F401  registers job handlers on the shared runner
 from app.workers import ingestion as _ingestion  # noqa: F401  registers job handlers on the shared runner
+from app.workers import research as _research  # noqa: F401  registers job handlers on the shared runner
 from app.workers import scout as _scout  # noqa: F401  registers job handlers on the shared runner
+from app.workers import verification as _verification  # noqa: F401  registers job handlers on the shared runner
 from app.workers.jobs import job_runner
 
 logger = logging.getLogger(__name__)
@@ -57,6 +64,9 @@ app.include_router(jobs_router, prefix=f"{settings.api_v1_prefix}/jobs")
 app.include_router(meta_router, prefix=f"{settings.api_v1_prefix}/meta")
 app.include_router(dedup_router, prefix=f"{settings.api_v1_prefix}/dedup")
 app.include_router(scout_router, prefix=f"{settings.api_v1_prefix}/scout")
+app.include_router(research_router, prefix=f"{settings.api_v1_prefix}/research")
+app.include_router(verification_router, prefix=f"{settings.api_v1_prefix}/verification")
+app.include_router(backfill_router, prefix=f"{settings.api_v1_prefix}/backfill")
 
 
 @app.get("/")

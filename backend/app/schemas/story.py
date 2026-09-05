@@ -47,6 +47,8 @@ class StoryRead(BaseModel):
     confidence_score: float | None
     should_research: bool | None
     scout_reason: str | None
+    scouted_at: datetime | None
+    researched_at: datetime | None
     discovered_at: datetime
     updated_at: datetime
     source_names: list[str] = []

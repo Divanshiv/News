@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     anthropic_max_tokens: int = 4096
     anthropic_timeout_seconds: float = 60.0
 
+    web_search_backend: str = "duckduckgo"
+    web_search_timeout_seconds: float = 15.0
+    web_search_retries: int = 2
+    serper_api_key: str = ""
+    research_max_sources: int = 6
+    research_max_queries: int = 2
+    research_fetch_limit: int = 4
+    research_text_max_chars: int = 6000
+
 
 @lru_cache
 def get_settings() -> Settings:

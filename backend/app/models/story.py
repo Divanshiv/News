@@ -36,6 +36,7 @@ class Story(Base):
     should_research: Mapped[bool | None] = mapped_column(Boolean, index=True)
     scout_reason: Mapped[str | None] = mapped_column(Text)
     scouted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    researched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     merged_into_id: Mapped[int | None] = mapped_column(
         ForeignKey("stories.id", ondelete="SET NULL"), index=True
     )
