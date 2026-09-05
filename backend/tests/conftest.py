@@ -28,6 +28,7 @@ def isolated_job_runner():
     job_runner.register("ingest_all", fake_ingest_all)
     job_runner.register("ingest_source", fake_ingest_source)
     job_runner.register("dedupe_all", fake_dedupe_all)
+    job_runner.register("run_scout", fake_run_scout)
     yield
     job_runner.reset()
 
@@ -64,6 +65,19 @@ async def fake_dedupe_all(payload: dict) -> list[dict]:
             "keep_id": 1,
             "absorbed_ids": [2],
             "moved_links": 1,
+        }
+    ]
+
+
+async def fake_run_scout(payload: dict) -> list[dict]:
+    return [
+        {
+            "story_id": 1,
+            "title": "Example story",
+            "should_research": True,
+            "importance": 8,
+            "category": "Technology",
+            "reason": "fake verdict",
         }
     ]
 

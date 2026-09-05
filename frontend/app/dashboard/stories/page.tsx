@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, GitMerge, Newspaper, RefreshCw, Rocket } from "lucide-react";
+import { AlertTriangle, GitMerge, Newspaper, Radar, RefreshCw, Rocket } from "lucide-react";
 
 import {
   StatusBadge,
@@ -59,10 +59,17 @@ type DedupState =
   | { kind: "done"; merged: number }
   | { kind: "error"; message: string };
 
+type ScoutState =
+  | { kind: "idle" }
+  | { kind: "polling"; jobId: string }
+  | { kind: "done"; scored: number }
+  | { kind: "error"; message: string };
+
 export default function StoriesPage() {
   const [state, setState] = React.useState<StoriesState>({ kind: "loading" });
   const [ingest, setIngest] = React.useState<IngestState>({ kind: "idle" });
   const [dedup, setDedup] = React.useState<DedupState>({ kind: "idle" });
+  const [scout, setScout] = React.useState<ScoutState>({ kind: "idle" });
   const [refreshIndex, setRefreshIndex] = React.useState(0);
 
   const fetchStories = React.useCallback(() => {
@@ -208,6 +215,65 @@ export default function StoriesPage() {
     };
   }, [dedup]);
 
+  const handleRunScout = React.useCallback(() => {
+    setScout({ kind: "idle" });
+    apiPost<IngestionRunResponse>("/api/v1/scout/run")
+      .then((res) => {
+        setScout({ kind: "polling", jobId: res.job_id });
+      })
+      .catch((error: unknown) => {
+        setScout({
+          kind: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to run the scout agent.",
+        });
+      });
+  }, []);
+
+  React.useEffect(() => {
+    if (scout.kind !== "polling") return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      apiGet<IngestionJob>(`/api/v1/ingestion/jobs/${scout.jobId}`)
+        .then((job) => {
+          if (cancelled) return;
+          if (job.status === "COMPLETED" || job.status === "FAILED") {
+            const result = Array.isArray(job.result) ? job.result : [];
+            const scored = result.length;
+            setScout(
+              job.status === "COMPLETED"
+                ? { kind: "done", scored }
+                : {
+                    kind: "error",
+                    message: job.error ?? "Scout agent failed.",
+                  }
+            );
+            setRefreshIndex((i) => i + 1);
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setScout({ kind: "idle" });
+        });
+    }, POLL_INTERVAL);
+
+    const timeout = window.setTimeout(() => {
+      if (!cancelled) {
+        window.clearInterval(timer);
+        setScout({ kind: "idle" });
+        setRefreshIndex((i) => i + 1);
+      }
+    }, POLL_TIMEOUT);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.clearTimeout(timeout);
+    };
+  }, [scout]);
+
   const isLoading = state.kind === "loading" || ingest.kind === "polling";
 
   return (
@@ -224,6 +290,24 @@ export default function StoriesPage() {
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRunScout}
+                disabled={scout.kind === "polling"}
+              >
+                {scout.kind === "polling" ? (
+                  <>
+                    <RefreshCw className="size-3.5 animate-spin" />
+                    Scouting…
+                  </>
+                ) : (
+                  <>
+                    <Radar className="size-3.5" />
+                    Run scout
+                  </>
+                )}
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -264,6 +348,19 @@ export default function StoriesPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {scout.kind === "done" && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">
+              <Radar className="size-3.5 shrink-0" />
+              Scout complete — {scout.scored} story/stories scored with a
+              category, importance, and research recommendation.
+            </div>
+          )}
+          {scout.kind === "error" && scout.message && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              <AlertTriangle className="size-3.5 shrink-0" />
+              {scout.message}
+            </div>
+          )}
           {dedup.kind === "done" && (
             <div className="mb-3 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">
               <GitMerge className="size-3.5 shrink-0" />
@@ -340,9 +437,11 @@ export default function StoriesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[35%]">Title</TableHead>
+                    <TableHead className="w-[30%]">Title</TableHead>
                     <TableHead>Sources</TableHead>
                     <TableHead>Category</TableHead>
+                    <TableHead className="text-center">Importance</TableHead>
+                    <TableHead className="text-center">Research</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Discovered</TableHead>
                   </TableRow>
@@ -381,6 +480,36 @@ export default function StoriesPage() {
                           <span className="text-xs">{story.category}</span>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {story.importance_score == null ? (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        ) : (
+                          <span
+                            className={`text-xs font-semibold ${
+                              story.importance_score >= 7
+                                ? "text-emerald-600"
+                                : story.importance_score >= 5
+                                  ? "text-amber-600"
+                                  : "text-muted-foreground"
+                            }`}
+                          >
+                            {story.importance_score.toFixed(1)}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center" title={story.scout_reason ?? undefined}>
+                        {story.should_research == null ? (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        ) : story.should_research ? (
+                          <span className="inline-flex items-center rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-xs font-medium text-emerald-600">
+                            Yes
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                            No
+                          </span>
                         )}
                       </TableCell>
                       <TableCell>

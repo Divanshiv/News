@@ -35,6 +35,11 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
 
+    llm_provider: str = "ollama"
+    ollama_url: str = "http://localhost:11434"
+    ollama_model: str = "llama3.2"
+    ollama_timeout_seconds: float = 60.0
+
 
 @lru_cache
 def get_settings() -> Settings:

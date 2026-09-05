@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -33,6 +33,9 @@ class Story(Base):
     status: Mapped[str] = mapped_column(String(20), default="DISCOVERED")
     importance_score: Mapped[float | None] = mapped_column(Float)
     confidence_score: Mapped[float | None] = mapped_column(Float)
+    should_research: Mapped[bool | None] = mapped_column(Boolean, index=True)
+    scout_reason: Mapped[str | None] = mapped_column(Text)
+    scouted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     merged_into_id: Mapped[int | None] = mapped_column(
         ForeignKey("stories.id", ondelete="SET NULL"), index=True
     )

@@ -30,6 +30,8 @@ export type Story = {
   status: StoryStatus;
   importance_score: number | null;
   confidence_score: number | null;
+  should_research: boolean | null;
+  scout_reason: string | null;
   discovered_at: string;
   updated_at: string;
   url: string | null;

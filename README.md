@@ -9,14 +9,15 @@ PUBLIC SOURCES → INGESTION → DEDUPLICATION → SCOUT → RESEARCH → CLAIMS
 
 ## Status
 
-**Phase 4 — Deduplication (current).** Title/description similarity (stdlib
-only) converges one news event onto one story with multiple linked sources,
-via a `dedupe_all` maintenance job plus manual merge and near-miss review APIs.
-RSS ingestion with exact + fuzzy cross-source dedup ships stories into the
-dashboard. 83 passing backend tests. Full core schema (14 tables), Alembic
-migrations, CRUD API for sources/stories/articles, seed data.
+**Phase 5 — Scout agent (current).** Incoming stories are graded by a scout
+agent exposed over a replaceable LLM provider layer (Ollama first, with a
+deterministic rules fallback so the app runs anywhere): each story receives a
+category, an importance score, a research recommendation, and a reason, via a
+background `run_scout` job. 109 passing backend tests. Full core schema
+(14 tables), Alembic migrations, CRUD API for sources/stories/articles, seed
+data.
 
-Planned pipeline: scout/research/verification agents → article writing →
+Planned pipeline: research/verification agents → article writing →
 Instagram content → human approval → publish. See `docs/roadmap.md`.
 
 ## Stack
@@ -98,10 +99,11 @@ docker compose up db
 - Full CRUD API: `/api/v1/sources`, `/api/v1/stories` (auto-slugs, source linking), `/api/v1/articles` (auto `published_at` on publish) — paginated list responses (`items/total/limit/offset`) with status/category filters
 - RSS ingestion: `POST /api/v1/ingestion/run`, `POST /api/v1/ingestion/sources/{id}/fetch`, `GET /api/v1/ingestion/jobs/{id}` (async jobs, poll for completion) — see `docs/ingestion.md`
 - Deduplication: `POST /api/v1/dedup/run` (maintenance merge job), `POST /api/v1/dedup/merge` (manual merge), `GET /api/v1/dedup/candidates` (near-miss review) — see `docs/dedup.md`
-- Postgres schema: 13 models / 14 tables (sources, stories, claims, evidence, research runs, articles, social posts, media assets, agent runs, publishing jobs, users, audit log) via Alembic migration `c9d8e7f0a1b2` (story merge fields)
+- Scout agent: `POST /api/v1/scout/run` (batch scoring job) and `POST /api/v1/scout/stories/{id}` (single story) grade each story with category, importance (`0-10`), `should_research`, and a reason — Ollama-backed with a rules fallback — see `docs/agents.md`
+- Postgres schema: 13 models / 14 tables (sources, stories, claims, evidence, research runs, articles, social posts, media assets, agent runs, publishing jobs, users, audit log) via Alembic migration `d0e1f2a3b4c5` (scout fields; prev `c9d8e7f0a1b2` story merge fields)
 - Seed script: admin operator + 10 RSS sources (`python -m scripts.seed`)
-- Backend test suite (`uv run pytest`, 83 tests)
-- Next.js frontend: public landing pages + admin dashboard (sidebar, dark mode, health card, sources/stories tables with live ingestion controls + Run dedup)
+- Backend test suite (`uv run pytest`, 109 tests)
+- Next.js frontend: public landing pages + admin dashboard (sidebar, dark mode, health card, sources/stories tables with live ingestion controls + Run dedup + Run scout)
 
 ## Tests
 
@@ -124,6 +126,9 @@ All configuration via environment variables — see `.env.example` and `backend/
 | `DATABASE_URL`   | backend/.env     | asyncpg Postgres connection      |
 | `CORS_ORIGINS`   | backend/.env     | Allowed browser origins          |
 | `ENVIRONMENT`    | backend/.env     | dev/production                    |
+| `LLM_PROVIDER`   | backend/.env     | LLM backend for agents (`ollama`)|
+| `OLLAMA_URL`     | backend/.env     | Ollama server base URL           |
+| `OLLAMA_MODEL`   | backend/.env     | Ollama model name                |
 | `NEXT_PUBLIC_API_URL` | frontend/.env.local | Backend base URL           |
 
 ## Documentation
@@ -131,6 +136,7 @@ All configuration via environment variables — see `.env.example` and `backend/
 - `docs/architecture.md` — system architecture and layer map
 - `docs/ingestion.md` — RSS pipeline, job runner, ingestion API
 - `docs/dedup.md` — similarity rules, merging, dedup APIs
+- `docs/agents.md` — LLM provider layer and agent design (scout agent)
 - `docs/database.md` — schema, migrations, seed, testing
 - `docs/roadmap.md` — phased development plan (12 phases)
 

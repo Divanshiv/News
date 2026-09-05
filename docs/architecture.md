@@ -1,6 +1,6 @@
 # Architecture
 
-## Phase 4 — Deduplication (current)
+## Phase 5 — Scout agent (current)
 
 The repository is a monorepo with three top-level components:
 
@@ -28,15 +28,16 @@ Browser
 
 | Layer      | Path                  | Responsibility                          |
 |------------|-----------------------|-----------------------------------------|
-| API        | `app/api/`            | HTTP routers: health, sources, stories, articles, ingestion, dedup |
+| API        | `app/api/`            | HTTP routers: health, sources, stories, articles, ingestion, dedup, scout |
 | Core       | `app/core/`           | Settings, DB engine/session, structured JSON logging |
 | Models     | `app/models/`         | SQLAlchemy ORM models (14 tables)      |
 | Schemas    | `app/schemas/`        | Pydantic request/response models       |
 | Services   | `app/services/rss/`   | Feed fetch (httpx), parse (feedparser), normalize (canonical URLs) |
 | Services   | `app/services/ingestion.py` | Ingestion pipeline, dedup, Story/Source linking |
 | Services   | `app/services/dedup/` | Similarity scoring + story merging (P4)|
-| Workers    | `app/workers/`        | In-process async job runner + ingestion/dedup job handlers |
-| Agents     | `app/agents/`         | Scout/Research/Verification/Writer (P5+)|
+| Services   | `app/services/llm/`   | LLM provider abstraction + Ollama provider (P5) |
+| Workers    | `app/workers/`        | In-process async job runner + ingestion/dedup/scout job handlers |
+| Agents     | `app/agents/`         | ScoutAgent (P5 live); Research/Verification/Writer (P6+) |
 | Tools      | `app/tools/`          | WebSearch/URLFetch/RSSFetch (P6+)      |
 
 ### Frontend layer map
@@ -83,4 +84,5 @@ postgres (local Homebrew :5432 or `docker compose up db`)
 | 2 Database    | ✅ done |
 | 3 RSS ingestion | ✅ done — see `docs/ingestion.md` |
 | 4 Deduplication | ✅ done — see `docs/dedup.md` |
-| 5+            | planned — see `docs/roadmap.md` |
+| 5 Scout agent | ✅ done — see `docs/agents.md` |
+| 6+            | planned — see `docs/roadmap.md` |
