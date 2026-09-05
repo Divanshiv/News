@@ -1,0 +1,28 @@
+# ------------------------------------------------------------------
+# AI Newsroom — development infrastructure
+#
+# Phase 1: PostgreSQL only. Frontend/backend run locally for fast
+# iteration (see README). Application containers are planned for a
+# later phase (see docs/roadmap.md).
+# ------------------------------------------------------------------
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ai-newsroom-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_newsroom}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
