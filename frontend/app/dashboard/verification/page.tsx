@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, RefreshCw, ShieldCheck, Play } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import type { Story, ListResponse, DedupCandidate } from "@/types";
 
 function scoreTone(score: number): string {
@@ -32,6 +32,32 @@ function formatDate(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
+interface ClaimData {
+  id: number;
+  claim_text: string;
+  status: string;
+  confidence_score: number | null;
+  evidences: { id: number; evidence_text: string; url: string | null; source_id: number | null }[];
+}
+
+interface VerificationData {
+  story_id: number;
+  title: string;
+  claims: ClaimData[];
+  overall_confidence: number;
+  verification_summary: string;
+}
+
+function ClaimStatusBadge({ status }: { status: string }) {
+  const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+    CONFIRMED: "default",
+    LIKELY: "secondary",
+    UNCONFIRMED: "outline",
+    CONTRADICTED: "destructive",
+  };
+  return <Badge variant={variants[status] ?? "outline"}>{status}</Badge>;
+}
+
 export default function VerificationPage() {
   const [state, setState] = React.useState<
     | { kind: "loading" }
@@ -40,6 +66,9 @@ export default function VerificationPage() {
   >({ kind: "loading" });
   const [candidates, setCandidates] = React.useState<DedupCandidate[]>([]);
   const [tick, setTick] = React.useState(0);
+  const [selectedStory, setSelectedStory] = React.useState<number | null>(null);
+  const [verification, setVerification] = React.useState<VerificationData | null>(null);
+  const [verifying, setVerifying] = React.useState(false);
 
   const load = React.useCallback(() => {
     let cancelled = false;
@@ -78,6 +107,29 @@ export default function VerificationPage() {
     setTick((t) => t + 1);
   }, []);
 
+  const loadVerification = React.useCallback(async (storyId: number) => {
+    setSelectedStory(storyId);
+    try {
+      const data = await apiGet<VerificationData>(`/api/v1/verification/stories/${storyId}`);
+      setVerification(data);
+    } catch {
+      setVerification(null);
+    }
+  }, []);
+
+  const runVerification = React.useCallback(async () => {
+    setVerifying(true);
+    try {
+      await apiPost("/api/v1/verification/run");
+      setTimeout(() => {
+        setVerifying(false);
+        refresh();
+      }, 2000);
+    } catch {
+      setVerifying(false);
+    }
+  }, [refresh]);
+
   return (
     <div className="space-y-4">
       <Card>
@@ -86,14 +138,20 @@ export default function VerificationPage() {
             <div className="space-y-1">
               <CardTitle className="text-base">Verification queue</CardTitle>
               <CardDescription>
-                Stories in VERIFICATION are running claim checks against sources. Claims
-                and evidence will surface here as the verification agent lands (Phase 7).
+                Stories ready for claim verification. Run the verification agent to check
+                claims against evidence and determine confidence levels.
               </CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={refresh}>
-              <RefreshCw className="size-3.5" />
-              Refresh
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={runVerification} disabled={verifying}>
+                <Play className="size-3.5" />
+                {verifying ? "Running..." : "Run verification"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={refresh}>
+                <RefreshCw className="size-3.5" />
+                Refresh
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -122,31 +180,31 @@ export default function VerificationPage() {
             <EmptyState
               icon={ShieldCheck}
               title="Nothing in verification right now"
-              description="Stories enter VERIFICATION from the Story pipeline once research completes. The claim-checking agent (Phase 7) will populate claims and evidence here."
+              description="Stories enter VERIFICATION from the Story pipeline once research completes."
             />
           )}
 
           {state.kind === "ok" && state.data.items.length > 0 && (
             <div className="flex flex-col gap-3">
               <p className="text-xs text-muted-foreground">{state.data.total} in verification</p>
-              <Table>
+              <Table className="table-fixed">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Story</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Confidence</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Discovered</TableHead>
+                    <TableHead className="w-[50%]">Story</TableHead>
+                    <TableHead className="w-[15%]">Category</TableHead>
+                    <TableHead className="w-[13%]">Confidence</TableHead>
+                    <TableHead className="w-[12%]">Status</TableHead>
+                    <TableHead className="w-[10%] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {state.data.items.map((story) => (
                     <TableRow key={story.id}>
                       <TableCell>
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-medium">{story.title}</span>
+                        <div className="flex flex-col gap-0.5 min-w-0">
+                          <span className="font-medium truncate">{story.title}</span>
                           {story.scout_reason && (
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs text-muted-foreground truncate">
                               {story.scout_reason}
                             </span>
                           )}
@@ -169,8 +227,14 @@ export default function VerificationPage() {
                       <TableCell>
                         <StatusBadge status={story.status} />
                       </TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground whitespace-nowrap">
-                        {formatDate(story.discovered_at)}
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => loadVerification(story.id)}
+                        >
+                          View claims
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -180,6 +244,60 @@ export default function VerificationPage() {
           )}
         </CardContent>
       </Card>
+
+      {selectedStory && verification && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Claims — {verification.title}</CardTitle>
+            <CardDescription>
+              {verification.verification_summary} Overall confidence:{" "}
+              {(verification.overall_confidence * 100).toFixed(0)}%
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {verification.claims.length === 0 ? (
+              <EmptyState
+                icon={ShieldCheck}
+                title="No claims extracted"
+                description="Run research first to extract claims from sources."
+              />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Claim</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Confidence</TableHead>
+                    <TableHead>Evidence</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {verification.claims.map((claim) => (
+                    <TableRow key={claim.id}>
+                      <TableCell className="max-w-md">{claim.claim_text}</TableCell>
+                      <TableCell>
+                        <ClaimStatusBadge status={claim.status} />
+                      </TableCell>
+                      <TableCell>
+                        <span className={scoreTone(claim.confidence_score ?? 0)}>
+                          {claim.confidence_score !== null
+                            ? `${(claim.confidence_score * 100).toFixed(0)}%`
+                            : "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-muted-foreground">
+                          {claim.evidences.length} source{claim.evidences.length === 1 ? "" : "s"}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
