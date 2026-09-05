@@ -15,6 +15,7 @@ from app.services.rss.fetch import RSSFetcher, RSSFetchError
 from app.services.rss.normalize import canonicalize_url, normalize_title
 from app.services.rss.parse import FeedItem, ParsedFeed, parse_feed
 from app.services.slugs import unique_slug
+from app.tools.text_extraction import TextExtractionError, TextExtractionTool
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +52,11 @@ class IngestionService:
         *,
         session_factory: async_sessionmaker[AsyncSession] = async_session_factory,
         fetcher: RSSFetcher | None = None,
+        text_extractor: TextExtractionTool | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._fetcher = fetcher or RSSFetcher()
+        self._text_extractor = text_extractor or TextExtractionTool()
 
     async def get_source(self, source_id: int) -> Source | None:
         async with self._session_factory() as session:
@@ -116,6 +119,11 @@ class IngestionService:
         if match is not None:
             await self._link_if_missing(session, match, source)
             return {"title": item.title, "created": False, "reason": "duplicate"}
+
+        summary = item.summary
+        if not summary and canonical:
+            summary = await self._fetch_summary(canonical)
+
         slug = await unique_slug(session, Story, item.title)
         story = Story(
             title=item.title,
@@ -124,7 +132,7 @@ class IngestionService:
             author=item.author,
             image_url=item.image_url,
             source_published_at=item.published_at,
-            summary=item.summary,
+            summary=summary,
             category=source.category,
             status="DISCOVERED",
             discovered_at=datetime.now(timezone.utc),
@@ -140,6 +148,16 @@ class IngestionService:
             )
         )
         return {"title": item.title, "created": True, "reason": None}
+
+    async def _fetch_summary(self, url: str) -> str | None:
+        try:
+            title, paragraphs = await self._text_extractor.extract(url)
+            if paragraphs:
+                combined = " ".join(paragraphs[:3])[:500]
+                return combined if combined.strip() else None
+        except (TextExtractionError, Exception) as exc:
+            logger.debug("Failed to fetch summary from %s: %s", url, exc)
+        return None
 
     async def _find_match(
         self, session: AsyncSession, source: Source, item: FeedItem, canonical: str
