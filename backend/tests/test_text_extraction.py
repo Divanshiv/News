@@ -27,6 +27,50 @@ async def test_url_fetch_returns_text():
     await tool.close()
 
 
+async def test_url_fetch_decodes_meta_charset_when_header_has_none():
+    text = "证监会发布新规"
+    body = (
+        '<html><head><meta charset="gbk"></head>'
+        f"<body><p>{text}</p></body></html>"
+    ).encode("gbk")
+
+    def handler(_request):
+        return httpx.Response(
+            200, content=body, headers={"content-type": "text/html", "content-length": str(len(body))}
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    tool = URLFetchTool(client=client)
+    page = await tool.fetch("https://example.com/zh")
+    assert text in page
+    await tool.close()
+
+
+async def test_url_fetch_falls_back_to_meta_charset_when_header_lies():
+    text = "金融时报"
+    body = (
+        '<html><head><meta http-equiv="Content-Type" '
+        'content="text/html; charset=gbk"></head>'
+        f"<body><p>{text}</p></body></html>"
+    ).encode("gbk")
+
+    def handler(_request):
+        return httpx.Response(
+            200,
+            content=body,
+            headers={
+                "content-type": "text/html; charset=utf-8",
+                "content-length": str(len(body)),
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    tool = URLFetchTool(client=client, max_bytes=len(body))
+    page = await tool.fetch("https://example.com/zh")
+    assert text in page
+    await tool.close()
+
+
 async def test_url_fetch_raises_on_http_error():
     client = httpx.AsyncClient(
         transport=httpx.MockTransport(lambda request: httpx.Response(404))

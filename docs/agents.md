@@ -4,6 +4,23 @@ Agents are the AI workers of the newsroom. Each agent takes structured input,
 produces structured output, and depends on an LLM provider — never on a
 concrete model or server.
 
+```mermaid
+flowchart LR
+    IN["Story queue (DISCOVERED)"] --> SCOUT["Scout agent<br/>importance / category / should_research"]
+    SCOUT --> RES["Research agent<br/>sources + initial claims"]
+    RES --> VER["Verification agent<br/>claim status / confidence"]
+    VER --> WRITER["Writer agent<br/>article draft"]
+    WRITER --> DRAFT["Article DRAFT"]
+    SCOUT -.-> RULES1["keyword fallback"]
+    RES -.-> RULES2["sentence-heuristic claims"]
+    VER -.-> RULES3["indicator heuristics"]
+    WRITER -.-> RULES4["template draft"]
+```
+
+Each agent runs inside a background `app/workers/` job, writes structured
+artifacts (claims, evidence, sources, runs, drafts) to PostgreSQL, and falls
+back to deterministic rules when the LLM provider is unavailable.
+
 ## LLM provider layer
 
 `app/services/llm/` defines the provider contract (spec §22):
@@ -61,6 +78,22 @@ API or to the browser — `GET /api/v1/meta/config` exposes provider/model
 names but never credentials. All-provider failures fall back to the scout's
 deterministic rules, so the pipeline stays runnable when a provider is
 unavailable or unconfigured.
+
+```mermaid
+flowchart TB
+    AGENT["Agent (scout / research / verification / writer)"] --> F["get_provider()"]
+    F --> P1["OllamaProvider (default, local)"]
+    F --> P2["OpenAIProvider (any OpenAI-compatible endpoint)"]
+    F --> P3["AnthropicProvider"]
+    P1 --> OK["LLMResponse (text, model, token usage)"]
+    P2 --> OK
+    P3 --> OK
+    OK --> PARSE["robust JSON parser"]
+    PARSE -- "failure / provider error" --> RETRY["retry once"]
+    RETRY -- "still failing" --> FALLBACK["deterministic rules / template"]
+```
+
+`LLM_PROVIDER` picks the backend; agents never touch provider-specific code.
 
 ## Scout agent
 
@@ -156,6 +189,19 @@ order until one returns results), `SERPER_API_KEY`,
 `RESEARCH_MAX_SOURCES=6`, `RESEARCH_MAX_QUERIES=2`, `RESEARCH_FETCH_LIMIT=4`,
 `RESEARCH_TEXT_MAX_CHARS=6000`.
 
+```mermaid
+flowchart LR
+    T["story title + summary"] --> Q["build_queries (2 rule-based, category-boosted)"]
+    Q --> WS["WebSearchTool<br/>duckduckgo → bing → (serper) fallback chain"]
+    WS -- "thin results" --> OSINT["OSINT fallback queries<br/>site-restricted per category"]
+    WS --> DED["dedupe by normalized URL"]
+    OSINT --> DED
+    DED --> FETCH["URLFetchTool (top N)"]
+    FETCH --> EX["TextExtractionTool<br/>plain text, capped"]
+    EX --> LLM["LLM extracts claims (strict JSON schema)"]
+    LLM --> PERSIST["persist_package → sources / story_sources / claims + evidence"]
+```
+
 ### Execution and persistence
 
 `workers/research.py` registers the `research_story` job. It researches the
@@ -215,6 +261,14 @@ Heuristic rules:
 4. Claim statuses and confidence scores are updated in the database.
 5. Story status moves to VERIFICATION with overall confidence.
 
+```mermaid
+flowchart LR
+    ST["story (RESEARCHING)"] --> CL["claims + evidence from DB"]
+    CL --> AGT["VerificationAgent (all claims in one pass)"]
+    AGT --> OUT["VerificationResult: status / confidence / reasoning per claim"]
+    OUT --> DB["update claims + story confidence → VERIFICATION"]
+```
+
 ### Claim statuses
 
 | Status        | Meaning                                      |
@@ -266,6 +320,14 @@ The agent:
 4. An `Article` row is created in DRAFT status and the story moves to DRAFT.
 5. Stories without claims or with an existing article are skipped; merged or
    missing stories are reported as errors.
+
+```mermaid
+flowchart LR
+    ST["story (VERIFICATION)"] --> V["verified claims + evidence + sources"]
+    V --> AGT["WriterAgent (temperature 0.4)"]
+    AGT --> SF["structured draft: headline / sections / SEO"]
+    SF --> DB["Article row (DRAFT) + story → DRAFT"]
+```
 
 The writer never invents facts: it only composes from the claims/evidence it
 is given. SEO title/description default to truncated headline/summary.

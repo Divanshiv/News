@@ -168,14 +168,6 @@ export type Article = {
   updated_at: string;
 };
 
-export type ArticleWithStory = Article & {
-  story_title: string | null;
-  story_category: string | null;
-  story_slug: string | null;
-  story_confidence: number | null;
-  story_url: string | null;
-};
-
 export type DedupCandidate = {
   story_id_a: number;
   title_a: string;

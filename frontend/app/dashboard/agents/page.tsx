@@ -28,8 +28,13 @@ const JOB_STATUS_TONE: Record<IngestionJobStatus, string> = {
 
 const JOB_LABELS: Record<string, string> = {
   ingest_all: "Ingest all sources",
+  ingest_source: "Ingest source",
   dedupe_all: "Deduplicate stories",
   run_scout: "Scout stories",
+  research_story: "Research story",
+  verify_story: "Verify story",
+  generate_article: "Generate article",
+  backfill_summaries: "Backfill story summaries",
 };
 
 function jobLabel(name: string): string {
@@ -88,8 +93,8 @@ export default function AgentsPage() {
           <div className="space-y-1">
             <CardTitle className="text-base">Agents &amp; runs</CardTitle>
             <CardDescription>
-              Background jobs launched from the operator console — ingestion, deduplication,
-              and scout scoring. Research and verification agents land in later phases.
+              Background jobs launched from the operator console and dashboard actions —
+              ingestion, deduplication, scout/research/verification agents, and article writing.
             </CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={refresh}>
@@ -124,7 +129,7 @@ export default function AgentsPage() {
           <EmptyState
             icon={Bot}
             title="No agent runs yet"
-            description="Launch an ingestion, dedup, or scout run from the Stories or Sources pages and the activity will stream here."
+            description="Launch an ingestion, dedup, scout, research, verification, or article run from the Stories or Sources pages and the activity will stream here."
           />
         )}
 

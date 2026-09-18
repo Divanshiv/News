@@ -254,8 +254,8 @@ export default function StoryDetailPage({ params }: { params: Promise<{ id: stri
             <div>
               <h3 className="text-sm font-medium text-muted-foreground mb-1">Sources</h3>
               <div className="flex flex-wrap gap-1">
-                {story.source_names.map((name) => (
-                  <Badge key={name} variant="secondary">{name}</Badge>
+                {story.source_names.map((name, i) => (
+                  <Badge key={`${name}-${i}`} variant="secondary">{name}</Badge>
                 ))}
               </div>
             </div>

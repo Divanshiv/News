@@ -1,15 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-
-export type StoryStatus =
-  | "DISCOVERED"
-  | "RESEARCHING"
-  | "VERIFICATION"
-  | "DRAFT"
-  | "REVIEW"
-  | "APPROVED"
-  | "PUBLISHED"
-  | "REJECTED"
-  | "MERGED";
+import type { StoryStatus } from "@/types";
 
 type StatusStyle = {
   label: string;

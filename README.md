@@ -1,26 +1,30 @@
 # AI Newsroom
 
 A production-quality, student-friendly AI-powered OSINT newsroom. One operator runs a news website and an Instagram news channel from a single admin dashboard.
-```
 
-PUBLIC SOURCES → INGESTION → DEDUPLICATION → SCOUT → RESEARCH → CLAIMS/VERIFICATION
-      → ARTICLE → INSTAGRAM CONTENT → HUMAN APPROVAL → WEBSITE + INSTAGRAM
+```mermaid
+flowchart LR
+    A["PUBLIC SOURCES"] --> B["INGESTION"]
+    B --> C["DEDUPLICATION"]
+    C --> D["SCOUT"]
+    D --> E["RESEARCH"]
+    E --> F["CLAIMS / VERIFICATION"]
+    F --> G["ARTICLE"]
+    G --> H["INSTAGRAM CONTENT"]
+    H --> I["HUMAN APPROVAL"]
+    I --> J["WEBSITE + INSTAGRAM"]
 ```
 
 ## Status
 
-**Phase 6 — Research (current).** Stories produce research packages: a
-replaceable tool layer (web search with a comma-separated fallback chain —
-DuckDuckGo and Bing keyless by default, optional Serper; URL fetch; stdlib
-text extraction; source lookup) feeds a ResearchAgent that defines gatherable
-sources and drafts initial claims via the LLM provider layer (Ollama first,
-deterministic fallback). Results persist as sources, story links, claims, and
-evidence through a background `research_story` job — 170 passing backend
-tests. Full core schema (14 tables), Alembic migrations, CRUD API for
-sources/stories/articles, seed data.
-
-Planned pipeline: verification agent → article writing →
-Instagram content → human approval → publish. See `docs/roadmap.md`.
+**Phase 8 — Writer agent (current).** The pipeline runs from RSS ingestion
+through deduplication, scout scoring, web research (sources + initial claims),
+claim-by-claim verification, and article drafting — every stage driven by the
+abstracted LLM provider layer (Ollama/local first, OpenAI and Anthropic
+optional) with deterministic fallbacks so the whole thing works keyless and
+free. All artifacts persist as 14 tables via Alembic, with CRUD APIs for
+sources/stories/articles and a dashboard to drive each stage. Human approval
+and publish/discovery are the remaining phases — see `docs/roadmap.md`.
 
 ## Stack
 
@@ -103,10 +107,12 @@ docker compose up db
 - Deduplication: `POST /api/v1/dedup/run` (maintenance merge job), `POST /api/v1/dedup/merge` (manual merge), `GET /api/v1/dedup/candidates` (near-miss review) — see `docs/dedup.md`
 - Scout agent: `POST /api/v1/scout/run` (batch scoring job) and `POST /api/v1/scout/stories/{id}` (single story) grade each story with category, importance (`0-10`), `should_research`, and a reason — Ollama-backed with a rules fallback — see `docs/agents.md`
 - Research: `POST /api/v1/research/run` (batch job) and `POST /api/v1/research/stories/{id}` research recommended stories — web search (`WEB_SEARCH_BACKEND`: DuckDuckGo/Bing keyless, Serper optional, comma-separated fallback chain), URL fetch, text extraction (`app/tools/`), ResearchAgent, initial claims; `GET /api/v1/research/runs/{story_id}` returns the package (runs, sources, claims with evidence) — see `docs/agents.md`
-- Postgres schema: 13 models / 14 tables (sources, stories, claims, evidence, research runs, articles, social posts, media assets, agent runs, publishing jobs, users, audit log) via Alembic migration `e5f6a7b8c9d0` (research fields; prev `d0e1f2a3b4c5` scout fields)
+- Verification: `POST /api/v1/verification/run` and `POST /api/v1/verification/stories/{id}` verify a story's claims against evidence (CONFIRMED/LIKELY/UNCONFIRMED/CONTRADICTED with confidence + reasoning); `GET /api/v1/verification/stories/{story_id}` reads the package; `PATCH /api/v1/verification/claims/{claim_id}` edits a verdict — see `docs/agents.md`
+- Articles: `POST /api/v1/articles/generate` and `POST /api/v1/articles/generate/stories/{id}` draft articles from verified research (structured headline/body/SEO output); `GET/PATCH /api/v1/articles/{id}` edit and move through DRAFT → REVIEW → APPROVED → PUBLISHED — see `docs/agents.md`
+- Postgres schema: 13 models / 14 tables (sources, stories, claims, evidence, research runs, articles, social posts, media assets, agent runs, publishing jobs, users, audit log) via Alembic migration `e5f6a7b8c9d0` (research fields; prev `d0e1f2a3b4c5` scout fields, head) — see `docs/database.md`
 - Seed script: admin operator + 10 RSS sources (`python -m scripts.seed`)
-- Backend test suite (`uv run pytest`, 159 tests)
-- Next.js frontend: public landing pages + admin dashboard (sidebar, dark mode, health card, sources/stories tables with live ingestion controls + Run dedup + Run scout + Run research, research queue with clickable per-story research packages)
+- Backend test suite (`uv run pytest`, 150+ tests)
+- Next.js frontend: public landing pages + admin dashboard (sidebar, dark mode, health card, sources/stories tables with live ingestion controls + Run dedup + Run scout + Run research, research queue with clickable per-story research packages, verification queue, article editor)
 
 ## Tests
 
